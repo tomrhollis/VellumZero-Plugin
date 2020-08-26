@@ -1,10 +1,11 @@
 # VellumZero-Plugin
 A plugin for Vellum 1.3+ to take advantage of ElementZero capabilities
 
-This is now the home of Vellum for Element Zero.  Vellum is currently working on a transition to a plugin model, so I have updated my code accordingly.  Once this transition is complete, I will publish a full release here.  Until then, I'm continuing to work on bugs and features, which will see the light of day in that future release.  You can find a download of the previous version here though, and the documentation for that version follows below.
+This is now the home of Vellum for Element Zero.  Vellum is currently working on a transition to a plugin model, so I have updated my code accordingly.  Once this transition is complete, I will publish a full release here.  Until then, I'm continuing to work on bugs and features, which will see the light of day in that future release.  
 
-## Note
 If you want to compile this for some reason, the code in this repository depends on the /dev tree of my fork of vellum
+
+You can find a download of the previous version here though, and the documentation for that version follows below.
 
 
 # Vellum for Element Zero
