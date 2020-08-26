@@ -26,7 +26,7 @@ namespace VellumZero
         {            
             _vz = parent;
             dsConfig = parent.vzConfig.DiscordSync;
-            _vz.Log("Starting Discord");
+            _vz.Log(_vz.vzConfig.VZStrings.LogDiscInit);
             Task.Run(RunBotAsync);
         }
 
@@ -43,7 +43,7 @@ namespace VellumZero
 
             Channel = (ITextChannel)_client.GetChannel(dsConfig.DiscordChannel);
 
-            _vz.Log("Discord Connected");
+            _vz.Log(_vz.vzConfig.VZStrings.LogDiscConn);
         }
 
         /// <summary>
@@ -53,6 +53,7 @@ namespace VellumZero
         {
             await _client.LogoutAsync();
             await _client.StopAsync();
+            _vz.Log(_vz.vzConfig.VZStrings.LogDiscDC);
         }
 
         /// <summary>
@@ -116,7 +117,7 @@ namespace VellumZero
         /// <param name="text">The text to send to discord</param>
         public async Task SendMessage(string text)
         {            
-            string message = Regex.Replace(text, @"[§\u00a7][0-9a-z]", ""); // strip minecraft formatting if any
+            string message = Regex.Replace(text, @"[§\u00a7][0-9a-gk-or]", ""); // strip minecraft formatting if any
             message = Regex.Replace(message, @"@everyone", "everyone");
             message = Regex.Replace(message, @"@here", "here");
             var location = _client.GetChannel(dsConfig.DiscordChannel) as SocketTextChannel;

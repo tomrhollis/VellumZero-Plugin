@@ -18,6 +18,7 @@ namespace VellumZero
         private VellumZero _vz;
         private string localAddress;
         internal bool commandSupportLoaded = false;
+        private HttpClient httpClient;
 
         /// <summary>
         /// Initializes the bus object
@@ -29,6 +30,7 @@ namespace VellumZero
             ssConfig = parent.vzConfig.ServerSync;
             localAddress = String.Format("http://{0}:{1}/", ssConfig.BusAddress, ssConfig.BusPort);
             _vz.Log("Bus Connected");
+            httpClient = new HttpClient();
         }
 
         /// <summary>
@@ -38,8 +40,8 @@ namespace VellumZero
         /// <returns>the cleaned string</returns>
         private string CleanString(string text)
         {
-            text = Regex.Replace(text, @"§", "\\u00a7");
-            text = Regex.Replace(text, @"""", "\\\"");
+            text = Regex.Replace(text, @"§", "\u00a7");
+            text = Regex.Replace(text, @"""", @"\\""");
             return text;
         }
 
@@ -48,23 +50,58 @@ namespace VellumZero
         /// </summary>
         /// <param name="text">the message to send</param>
         public void Broadcast(string text)
+        {            
+            foreach (string name in ssConfig.OtherServers)
+            {
+                Announce(name, text);
+            }
+        }
+
+        /// <summary>
+        /// Sends an announcement to one server on the bus
+        /// </summary>
+        /// <param name="destination">the name of the server</param>
+        /// <param name="text">the text to send</param>
+        public void Announce(string destination, string text)
         {
+            text = CleanString(text);
+            string address = "{0}map/{1}/announce";
+            StringContent content = new StringContent(text);
+
             try
             {
-                HttpClient client = new HttpClient();
-                text = CleanString(text);
-                string address = "{0}map/{1}/announce";
-
-                foreach (string name in ssConfig.OtherServers)
-                {
-                    StringContent content = new StringContent(text);
-                    client.PostAsync(String.Format(address, localAddress, name), content);
-                }
+                httpClient.PostAsync(String.Format(address, localAddress, destination), content);
             }
             catch (Exception e)
             {
                 _vz.Log("Something went wrong with the bus: " + e.Message);
             }
+        }
+
+        /// <summary>
+        /// Execute a command on the specified server on the bus
+        /// </summary>
+        /// <param name="destination">which server to execute the command on</param>
+        /// <param name="command">the command to execute</param>
+        /// <returns>A string of the JSON output from the command</returns>
+        internal string ExecuteCommand(string destination, string command)
+        {
+            command = CleanString(command);
+            StringContent content = new StringContent(command);
+            string address = "{0}map/{1}/executeCommand.json";
+            string result = "Result string not yet implemented";            
+
+            try
+            {
+                // result =
+                // console out for now to confirm what is actually happening here
+                _vz.Log(httpClient.PostAsync(String.Format(address, localAddress, destination), content).Result.Content.ToString());
+            }
+            catch (Exception e)
+            {
+                _vz.Log("Something went wrong with the bus: " + e.Message);
+            }
+            return result;
         }
 
         /// <summary>
