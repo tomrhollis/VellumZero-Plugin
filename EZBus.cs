@@ -20,7 +20,7 @@ namespace VellumZero
         internal bool commandSupportLoaded = false;
 
         /// <summary>
-        /// Creates a bus object and broadcasts a connection message to the bus
+        /// Initializes the bus object
         /// </summary>
         /// <param name="parent">The object for the main class of this plugin</param>
         public EZBus(VellumZero parent)
@@ -28,7 +28,6 @@ namespace VellumZero
             _vz = parent;
             ssConfig = parent.vzConfig.ServerSync;
             localAddress = String.Format("http://{0}:{1}/", ssConfig.BusAddress, ssConfig.BusPort);
-            Broadcast(String.Format("(\\u00a7b{0}\\u00a7r): Online", _vz.Host.WorldName));
             _vz.Log("Bus Connected");
         }
 

@@ -142,13 +142,12 @@ namespace VellumZero
 
         public void Reload()
         {
-            throw new NotImplementedException();
+            
         }
 
         public void Unload()
         {
             Log("Unloading plugin");
-            // can we assume the server is going down when this happens? if so send DC messages
 
             // gracefully disconnect from discord
             if (_discord != null) ((DiscordBot)_discord).ShutDown().GetAwaiter().GetResult();
