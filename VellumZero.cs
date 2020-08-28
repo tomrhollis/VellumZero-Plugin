@@ -34,6 +34,7 @@ namespace VellumZero
         private Timer autoRestartTimer;
         private Timer hiVisWarnTimer;
         private Timer hiVisWarnMsgs;
+        private Timer normalWarnMsg;
         private uint msCountdown;
         private bool alreadyStopping = false;
 
@@ -124,11 +125,22 @@ namespace VellumZero
                             {
                                 Host.Bds.SendInput("stop");
                             };
-                            
+
                             // set up hi visibility shutdown messages
                             if (vzConfig.HiVisShutdown)
                             {
                                 StartHiVisTimers();
+                            }
+                            else
+                            {
+                                uint timerMins = (vzConfig.AutoRestartMins > 5) ? vzConfig.AutoRestartMins - 5 : vzConfig.AutoRestartMins;
+                                normalWarnMsg = new Timer((timerMins * 60000) + 1);
+                                normalWarnMsg.AutoReset = false;
+                                normalWarnMsg.Elapsed += (object sender, ElapsedEventArgs e) =>
+                                {
+                                    RelayToServer(String.Format(vzConfig.VZStrings.RestartOneWarn, timerMins));
+                                };
+                                normalWarnMsg.Start();
                             }
                             autoRestartTimer.Start();
                         }
@@ -281,6 +293,7 @@ namespace VellumZero
             if (autoRestartTimer != null) autoRestartTimer.Stop();
             if (hiVisWarnTimer != null) hiVisWarnTimer.Stop();
             if (hiVisWarnMsgs != null) hiVisWarnMsgs.Stop();
+            if (normalWarnMsg != null) normalWarnMsg.Stop();
         }
 
         private void Broadcast(string message)
@@ -289,10 +302,8 @@ namespace VellumZero
             if (_bus != null) _bus.Broadcast(message);
         }
 
-        internal void RelayFromDiscord(string server, string user, string text)
+        internal void RelayToServer(string message)
         {
-            string message = String.Format(vzConfig.VZStrings.MsgFromDiscord, server, user, text);
-
             // if there's a bus, use that to avoid console confirmation messages. Otherwise use console
             if (_bus != null && _bus.chatSupportLoaded) _bus.Announce(Host.WorldName, message);
             else Host.Bds.SendTellraw(prefix: "", message: message);                        
@@ -314,7 +325,7 @@ namespace VellumZero
             uint timerMins;
             if (s > 0)
             {
-                timerMins = (s > 600) ? s - 600 : 0;
+                timerMins = (s > 600) ? (s - 600)/60 : 0;
                 msCountdown = (s > 600) ? 600000 : s * 1000;
             }
             else if (vzConfig.AutoRestartMins > 10)
@@ -373,7 +384,7 @@ namespace VellumZero
                     PlayerConnMessages = true,
                     ServerStatusMessages = true,
                     AutoRestartMins = 1440,
-                    HiVisShutdown = true,
+                    HiVisShutdown = false,
                     DiscordSync = new DiscordSyncConfig()
                     {
                         EnableDiscordSync = false,
@@ -405,6 +416,7 @@ namespace VellumZero
                         ServerUpMsg = "(§6{0}§r): §aOnline§r",
                         ServerDownMsg = "(§6{0}§r): §cOffline§r",
                         MsgFromDiscord = "(§d{0}§r) [§b{1}§r] {2}",
+                        RestartOneWarn = "The server will restart in {0} minutes",
                         RestartMinWarn = "§c§lLess than {0} min to scheduled restart!",
                         RestartSecTitle = "§c{0}",
                         RestartSecSubtl = "§c§lseconds until restart",                        
@@ -470,6 +482,7 @@ namespace VellumZero
         public string ServerUpMsg;
         public string ServerDownMsg;
         public string MsgFromDiscord;
+        public string RestartOneWarn;
         public string RestartMinWarn;
         public string RestartSecTitle;
         public string RestartSecSubtl;

@@ -108,7 +108,7 @@ namespace VellumZero
             // post on this server (other servers will handle discord themselves)
             MessageEventArgs a = new MessageEventArgs("Discord", message.Author.Username, msgText);
             _vz.CallHook(VellumZero.Hook.DISCORD_REC, a);
-            _vz.RelayFromDiscord(a.Server, a.User, a.Text);
+            _vz.RelayToServer(String.Format(_vz.vzConfig.VZStrings.MsgFromDiscord, a.Server, a.User, a.Text));
         }
         
         /// <summary>
