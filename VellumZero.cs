@@ -10,6 +10,7 @@ using Vellum.Extension;
 using System;
 using Vellum.Automation;
 using System.Text.RegularExpressions;
+using System.Timers;
 
 namespace VellumZero
 {
@@ -28,6 +29,13 @@ namespace VellumZero
         private bool playerEventsMade;
         private bool busEventsMade;
         private bool chatEventMade;
+        private bool sawChatAPIstring;
+        private bool sawCmdAPIstring;
+        private Timer autoRestartTimer;
+        private Timer hiVisWarnTimer;
+        private Timer hiVisWarnMsgs;
+        private uint msCountdown;
+        private bool alreadyStopping = false;
 
         #region PLUGIN
         internal IHost Host;
@@ -46,7 +54,32 @@ namespace VellumZero
         public void Initialize(IHost host)
         {    
             Host = host;
-            vzConfig = LoadConfiguration();            
+            vzConfig = LoadConfiguration();
+            
+            // need to make these events even if plugin is disabled so if vellum is reloaded to enable it we'll have the info they get
+            if (!busEventsMade)
+            {
+                // detect that the bus is loaded properly for chat
+                Host.Bds.RegisterMatchHandler(@".+\[Bus\].+Load builtin extension for ChatAPI$", (object sender, MatchedEventArgs e) =>
+                {
+                    if (vzConfig.ServerSync.EnableServerSync && _bus == null)
+                    {
+                        _bus = new EZBus(this);
+                        _bus.chatSupportLoaded = true;
+                    }
+                    sawChatAPIstring = true;
+                });
+                // detect that the bus is loaded properly for commands 
+                Host.Bds.RegisterMatchHandler(@".+\[Bus\].+Load builtin extension for CommandSupport$", (object sender, MatchedEventArgs e) =>
+                {
+                    Regex r = new Regex(@".+\[CHAT\].+");
+                    Match m = r.Match(e.Matches[0].ToString());
+                    if (m.Success) return; // this is someone who knows too much typing the string in chat -- abort!
+                    sawCmdAPIstring = true;
+                    if (_bus != null) _bus.commandSupportLoaded = true;
+                });
+                busEventsMade = true;
+            }
             if (!vzConfig.EnableVZ) return;
             Log(vzConfig.VZStrings.LogInit);
 
@@ -58,7 +91,7 @@ namespace VellumZero
                     if (!librariesLoaded)
                     {
                         AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(
-                        (object sender, ResolveEventArgs args) => { return EmbeddedAssembly.Get(args.Name); });
+                            (object sender, ResolveEventArgs args) => { return EmbeddedAssembly.Get(args.Name); });
 
                         EmbeddedAssembly.Load("System.Collections.Immutable.dll");
                         EmbeddedAssembly.Load("System.Interactive.Async.dll");
@@ -73,39 +106,54 @@ namespace VellumZero
                     _discord = new DiscordBot(this);                    
                 }
 
-                // set up events for server online/offline messages
+                // set up events for server up/down: online/offline messages & auto restart handling
                 if (vzConfig.ServerStatusMessages && !serverEventsMade)
                 {
                     Host.Bds.OnServerStarted += (object sender, EventArgs e) =>
                     {
+                        // broadcast the server online message
                         string message = String.Format(vzConfig.VZStrings.ServerUpMsg, Host.WorldName);
-                        Broadcast(message);                      
+                        Broadcast(message);
+
+                        // set up automatic restart timer
+                        if (vzConfig.AutoRestartMins > 0)
+                        {
+                            autoRestartTimer = new Timer(vzConfig.AutoRestartMins * 60000);
+                            autoRestartTimer.AutoReset = false;
+                            autoRestartTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
+                            {
+                                Host.Bds.SendInput("stop");
+                            };
+                            
+                            // set up hi visibility shutdown messages
+                            if (vzConfig.HiVisShutdown)
+                            {
+                                StartHiVisTimers();
+                            }
+                            autoRestartTimer.Start();
+                        }
                     };
                     Host.Bds.OnServerExited += (object sender, EventArgs e) =>
                     {
+                        // send server disconnect message
                         string message = String.Format(vzConfig.VZStrings.ServerDownMsg, Host.WorldName);
                         if (_bus != null) _bus.Broadcast(message);
-                        if (_discord != null) _discord.SendMessage(message).GetAwaiter().GetResult();                        
+                        if (_discord != null) _discord.SendMessage(message).GetAwaiter().GetResult();
+
+                        StopTimers();
+                    };                    
+                    Host.Bds.OnShutdownScheduled += (object sender, ShutdownScheduledEventArgs e) =>
+                    {
+                        // if someone already ran "stop ##" in the console, doing it again doesn't overwrite the previous timer
+                        // so if this has already happened, don't redo anything here
+                        if (!alreadyStopping)
+                        {
+                            StopTimers();
+                            StartHiVisTimers(e.Seconds);
+                            alreadyStopping = true;
+                        }
                     };
                     serverEventsMade = true;
-                }
-
-                // connect to the bus only after the bus mod is loaded
-                if (vzConfig.ServerSync.EnableServerSync && !busEventsMade)
-                {
-                    // detect that the bus is loaded properly for chat
-                    Host.Bds.RegisterMatchHandler(@".+\[Bus\].+Load builtin extension for ChatAPI$", (object sender, MatchedEventArgs e) =>
-                    {
-                        if (_bus == null) _bus = new EZBus(this);  
-                    });
-                    // detect that the bus is loaded properly for commands 
-                    Host.Bds.RegisterMatchHandler(@".+\[Bus\].+Load builtin extension for CommandSupport$", (object sender, MatchedEventArgs e) =>
-                    {
-                        Regex r = new Regex(@".+\[CHAT\].+");
-                        Match m = r.Match(e.Matches[0].ToString());
-                        if (m.Success) return; // this is someone who knows too much typing the string in chat -- abort!
-                    });
-                    busEventsMade = true;
                 }
 
                 if (!chatEventMade)
@@ -157,6 +205,12 @@ namespace VellumZero
             _bus = null;
             LoadConfiguration();
             Initialize(Host);
+            if (vzConfig.EnableVZ && vzConfig.ServerSync.EnableServerSync)
+            {
+                _bus = new EZBus(this);
+                _bus.chatSupportLoaded = sawChatAPIstring;
+                _bus.commandSupportLoaded = sawCmdAPIstring;
+            }
         }
 
         public void Unload()
@@ -165,6 +219,8 @@ namespace VellumZero
 
             // gracefully disconnect from discord
             if (_discord != null) _discord.ShutDown().GetAwaiter().GetResult();
+
+            StopTimers();
         }
 
         public Dictionary<byte, string> GetHooks()
@@ -206,7 +262,7 @@ namespace VellumZero
 
         private void HandleJoin(string user)
         {
-            MessageEventArgs a = new MessageEventArgs(Host.WorldName, user, "Connected");
+            MessageEventArgs a = new MessageEventArgs(Host.WorldName, user, "");
             CallHook(Hook.LOC_PLAYER_CONN, a);
 
             Broadcast(String.Format(vzConfig.VZStrings.PlayerJoinMsg, a.Server, a.User));
@@ -214,10 +270,17 @@ namespace VellumZero
 
         private void HandleLeave(string user)
         {
-            MessageEventArgs a = new MessageEventArgs(Host.WorldName, user, "Left");
+            MessageEventArgs a = new MessageEventArgs(Host.WorldName, user, "");
             CallHook(Hook.LOC_PLAYER_DC, a);
 
             Broadcast(String.Format(vzConfig.VZStrings.PlayerLeaveMsg, a.Server, a.User));
+        }
+
+        private void StopTimers()
+        {
+            if (autoRestartTimer != null) autoRestartTimer.Stop();
+            if (hiVisWarnTimer != null) hiVisWarnTimer.Stop();
+            if (hiVisWarnMsgs != null) hiVisWarnMsgs.Stop();
         }
 
         private void Broadcast(string message)
@@ -231,7 +294,7 @@ namespace VellumZero
             string message = String.Format(vzConfig.VZStrings.MsgFromDiscord, server, user, text);
 
             // if there's a bus, use that to avoid console confirmation messages. Otherwise use console
-            if (_bus != null) _bus.Announce(Host.WorldName, message);
+            if (_bus != null && _bus.chatSupportLoaded) _bus.Announce(Host.WorldName, message);
             else Host.Bds.SendTellraw(prefix: "", message: message);                        
         }
 
@@ -239,11 +302,55 @@ namespace VellumZero
         /// run a command on this server
         /// </summary>
         /// <param name="command">the command to run</param>
-        public void Execute(string command)
+        /// <param name="avoidBus">if true, use SendInput even if the bus is active</param>
+        public void Execute(string command, bool avoidBus=false)
         {
-            throw new NotImplementedException();
-            if (_bus != null && _bus.commandSupportLoaded) _bus.ExecuteCommand(Host.WorldName, command); // make sure all console commands work this way
-            // else Host.Bds.SendInput(command); // this needs extra testing for character/encoding issues and if all in-game commands work this way
+            if (_bus != null && _bus.commandSupportLoaded && !avoidBus) _bus.ExecuteCommand(Host.WorldName, command); // make sure all console commands work this way
+            else Host.Bds.SendInput(command); // this needs extra testing for character/encoding issues and if all in-game commands work this way
+        }
+
+        private void StartHiVisTimers(uint s=0)
+        {
+            uint timerMins;
+            if (s > 0)
+            {
+                timerMins = (s > 600) ? s - 600 : 0;
+                msCountdown = (s > 600) ? 600000 : s * 1000;
+            }
+            else if (vzConfig.AutoRestartMins > 10)
+            {
+                timerMins = vzConfig.AutoRestartMins - 10;
+                msCountdown = 600000;
+            }
+            else
+            {
+                timerMins = 0;
+                msCountdown = vzConfig.AutoRestartMins * 60000;
+            }
+            // countdown for the warning messages to start
+            hiVisWarnTimer = new Timer((timerMins * 60000) + 1);
+            hiVisWarnTimer.AutoReset = false;
+            hiVisWarnTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
+            {
+                // repeating countdown for each warning message
+                hiVisWarnMsgs = new Timer(1000);
+                hiVisWarnMsgs.AutoReset = true;
+                hiVisWarnMsgs.Elapsed += (object sender, ElapsedEventArgs e) =>
+                {
+                    msCountdown -= 1000;
+                    if ((msCountdown > 60500 && msCountdown % 60000 < 1000) || (msCountdown < 60500 && msCountdown > 10500))
+                    {
+                        Execute(String.Format("title @a actionbar " + vzConfig.VZStrings.RestartMinWarn, (int)Math.Ceiling((decimal)msCountdown / 60000m)));
+                    }
+                    else if (msCountdown < 10500)
+                    {
+                        Execute(String.Format("title @a actionbar " + vzConfig.VZStrings.RestartSecSubtl, (int)Math.Ceiling((decimal)msCountdown / 1000m)));
+                        Execute(String.Format("title @a title " + vzConfig.VZStrings.RestartSecTitle, (int)Math.Ceiling((decimal)msCountdown / 1000m)));
+                    }
+                };
+                hiVisWarnMsgs.Start();
+            };
+            hiVisWarnTimer.Start();
         }
 
         private VZConfig LoadConfiguration()
@@ -298,6 +405,9 @@ namespace VellumZero
                         ServerUpMsg = "(§6{0}§r): §aOnline§r",
                         ServerDownMsg = "(§6{0}§r): §cOffline§r",
                         MsgFromDiscord = "(§d{0}§r) [§b{1}§r] {2}",
+                        RestartMinWarn = "§c§lLess than {0} min to scheduled restart!",
+                        RestartSecTitle = "§c{0}",
+                        RestartSecSubtl = "§c§lseconds until restart",                        
                     }
                 };
                 using (StreamWriter writer = new StreamWriter(configFile))
@@ -310,7 +420,7 @@ namespace VellumZero
 
         internal void Log(string line)
         {
-            Host.Bds.ConsoleOut("[    VELLUMZERO    ] " + line);
+            Host.Bds.ConsoleOut("[       VELLUMZERO       ] " + line);
         }
     }
        
@@ -360,6 +470,9 @@ namespace VellumZero
         public string ServerUpMsg;
         public string ServerDownMsg;
         public string MsgFromDiscord;
+        public string RestartMinWarn;
+        public string RestartSecTitle;
+        public string RestartSecSubtl;
     }
 
     public class MessageEventArgs : EventArgs
@@ -374,7 +487,5 @@ namespace VellumZero
             User = u;
             Text = t;
         }
-    }
-
-    
+    }    
 }

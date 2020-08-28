@@ -17,7 +17,8 @@ namespace VellumZero
         private ServerSyncConfig ssConfig;
         private VellumZero _vz;
         private string localAddress;
-        internal bool commandSupportLoaded = false;
+        internal bool commandSupportLoaded;
+        internal bool chatSupportLoaded;
         private HttpClient httpClient;
 
         /// <summary>
@@ -27,6 +28,8 @@ namespace VellumZero
         public EZBus(VellumZero parent)
         {
             _vz = parent;
+            commandSupportLoaded = false;
+            chatSupportLoaded = false;
             ssConfig = parent.vzConfig.ServerSync;
             localAddress = String.Format("http://{0}:{1}/", ssConfig.BusAddress, ssConfig.BusPort);
             _vz.Log("Bus Connected");
@@ -88,14 +91,14 @@ namespace VellumZero
         {
             command = CleanString(command);
             StringContent content = new StringContent(command);
-            string address = "{0}map/{1}/executeCommand.json";
-            string result = "Result string not yet implemented";            
-
+            string address = "{0}map/{1}/execute_command.json";
+            string result = "";
+            
             try
             {
                 // result =
                 // console out for now to confirm what is actually happening here
-                _vz.Log(httpClient.PostAsync(String.Format(address, localAddress, destination), content).Result.Content.ToString());
+                result = httpClient.PostAsync(String.Format(address, localAddress, destination), content).Result.Content.ReadAsStringAsync().Result;
             }
             catch (Exception e)
             {
