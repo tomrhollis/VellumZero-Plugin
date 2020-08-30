@@ -89,15 +89,13 @@ namespace VellumZero
         /// <returns>A string of the JSON output from the command</returns>
         internal string ExecuteCommand(string destination, string command)
         {
-            command = CleanString(command);
+            command = Regex.Replace(command, @"§", "\u00a7");
             StringContent content = new StringContent(command);
             string address = "{0}map/{1}/execute_command.json";
             string result = "";
             
             try
             {
-                // result =
-                // console out for now to confirm what is actually happening here
                 result = httpClient.PostAsync(String.Format(address, localAddress, destination), content).Result.Content.ReadAsStringAsync().Result;
             }
             catch (Exception e)

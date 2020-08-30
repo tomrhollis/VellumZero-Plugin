@@ -11,6 +11,7 @@ using System;
 using Vellum.Automation;
 using System.Text.RegularExpressions;
 using System.Timers;
+using System.Linq;
 
 namespace VellumZero
 {
@@ -35,6 +36,7 @@ namespace VellumZero
         private Timer hiVisWarnTimer;
         private Timer hiVisWarnMsgs;
         private Timer normalWarnMsg;
+        private Timer rollCallTimer;
         private uint msCountdown;
         private bool alreadyStopping = false;
 
@@ -77,7 +79,11 @@ namespace VellumZero
                     Match m = r.Match(e.Matches[0].ToString());
                     if (m.Success) return; // this is someone who knows too much typing the string in chat -- abort!
                     sawCmdAPIstring = true;
-                    if (_bus != null) _bus.commandSupportLoaded = true;
+                    if (_bus != null)
+                    {
+                        _bus.commandSupportLoaded = true;
+                        rollCallTimer.Start();
+                    }
                 });
                 busEventsMade = true;
             }
@@ -200,6 +206,32 @@ namespace VellumZero
                     playerEventsMade = true;
                 }
             }
+            if (vzConfig.ServerSync.EnableServerSync)
+            {
+                rollCallTimer = new Timer(10000);
+                rollCallTimer.AutoReset = true;
+                rollCallTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
+                {
+                    List<string> players = new List<string>();
+                    // get list of people from other servers
+                    foreach(string server in vzConfig.ServerSync.OtherServers)
+                    {
+                        string result = _bus.ExecuteCommand(server, "list");
+                        if (result == "") continue;
+                        Regex r = new Regex("\"players\": \"(.+?)\"");
+                        players.AddRange(r.Match(result).Groups[1].ToString().Split(',').ToList());
+                    }
+                    // apply that list to the scoreboard
+                    Execute("scoreboard objectives remove Online");
+                    Execute("scoreboard objectives add Online dummy Online");
+                    Execute("scoreboard objectives setdisplay list Online");
+                    foreach(string player in players)
+                    {
+                        if (player.Length < 2) continue;
+                        Execute($"scoreboard players add \"{player}\" Online 0");
+                    }
+                };                
+            }
         }
 
         public void Reload()
@@ -286,6 +318,7 @@ namespace VellumZero
             if (hiVisWarnTimer != null) hiVisWarnTimer.Stop();
             if (hiVisWarnMsgs != null) hiVisWarnMsgs.Stop();
             if (normalWarnMsg != null) normalWarnMsg.Stop();
+            if (rollCallTimer != null) rollCallTimer.Stop();
         }
 
         private void Broadcast(string message)
