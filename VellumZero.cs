@@ -24,7 +24,7 @@ namespace VellumZero
 
         private DiscordBot _discord;
         private EZBus _bus;
-        private bool librariesLoaded;
+        private bool discLibrariesLoaded = false;
         private bool serverEventsMade;
         private bool playerEventsMade;
         private bool busEventsMade;
@@ -53,10 +53,10 @@ namespace VellumZero
         }
 
         public void Initialize(IHost host)
-        {    
+        {
             Host = host;
             vzConfig = LoadConfiguration();
-            
+
             // need to make these events even if plugin is disabled so if vellum is reloaded to enable it we'll have the info they get
             if (!busEventsMade)
             {
@@ -83,16 +83,18 @@ namespace VellumZero
             }
             if (!vzConfig.EnableVZ) return;
             Log(vzConfig.VZStrings.LogInit);
-
+                                    
             if (vzConfig.ServerSync.EnableServerSync || vzConfig.DiscordSync.EnableDiscordSync)
             {
                 // load the embedded resources for discord connectivity
                 if (vzConfig.DiscordSync.EnableDiscordSync && _discord == null)
                 {
-                    if (!librariesLoaded)
+                    if (!discLibrariesLoaded)
                     {
+                        // tell the runtime how to find embedded assemblies
+                        // (note: if someone else loads a library with the same name first, it should use the one already loaded in theory)
                         AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(
-                            (object sender, ResolveEventArgs args) => { return EmbeddedAssembly.Get(args.Name); });
+                                (object sender, ResolveEventArgs args) => { return EmbeddedAssembly.Get(args.Name); });
 
                         EmbeddedAssembly.Load("System.Collections.Immutable.dll");
                         EmbeddedAssembly.Load("System.Interactive.Async.dll");
@@ -101,7 +103,7 @@ namespace VellumZero
                         EmbeddedAssembly.Load("Discord.Net.Rest.dll");
                         EmbeddedAssembly.Load("Discord.Net.Webhook.dll");
                         EmbeddedAssembly.Load("Discord.Net.WebSocket.dll");
-                        librariesLoaded = true;
+                        discLibrariesLoaded = true;
                         Log(vzConfig.VZStrings.LogDiscLib);
                     }                                        
                     _discord = new DiscordBot(this);                    
@@ -126,22 +128,9 @@ namespace VellumZero
                                 Host.Bds.SendInput("stop");
                             };
 
-                            // set up hi visibility shutdown messages
-                            if (vzConfig.HiVisShutdown)
-                            {
-                                StartHiVisTimers();
-                            }
-                            else
-                            {
-                                uint timerMins = (vzConfig.AutoRestartMins > 5) ? vzConfig.AutoRestartMins - 5 : vzConfig.AutoRestartMins;
-                                normalWarnMsg = new Timer((timerMins * 60000) + 1);
-                                normalWarnMsg.AutoReset = false;
-                                normalWarnMsg.Elapsed += (object sender, ElapsedEventArgs e) =>
-                                {
-                                    RelayToServer(String.Format(vzConfig.VZStrings.RestartOneWarn, timerMins));
-                                };
-                                normalWarnMsg.Start();
-                            }
+                            // set up shutdown messages
+                            StartNotifyTimers();
+                            
                             autoRestartTimer.Start();
                         }
                     };
@@ -161,7 +150,7 @@ namespace VellumZero
                         if (!alreadyStopping)
                         {
                             StopTimers();
-                            StartHiVisTimers(e.Seconds);
+                            StartNotifyTimers(e.Seconds);
                             alreadyStopping = true;
                         }
                     };
@@ -180,13 +169,14 @@ namespace VellumZero
                         {
                             return; // don't transmit dot commands
                         }
+
                         HandleChat(user, chat);
                     });
                     chatEventMade = true;
                 }
 
                 // set up player join/leave event messages
-                if (vzConfig.PlayerConnMessages && !playerEventsMade)
+                if (!playerEventsMade)
                 {
                     Host.Bds.OnPlayerJoined += (object sender, MatchedEventArgs e) =>
                     {
@@ -194,7 +184,8 @@ namespace VellumZero
                         Match m = r.Match(e.Matches[0].ToString());
                         string user = m.Groups[1].ToString();
 
-                        HandleJoin(user);
+                        // display join message
+                        if (vzConfig.PlayerConnMessages) JoinMessage(user);
                     };
 
                     Host.Bds.OnPlayerLeft += (object sender, MatchedEventArgs e) =>
@@ -202,8 +193,9 @@ namespace VellumZero
                         Regex r = new Regex(@": (.+),");
                         Match m = r.Match(e.Matches[0].ToString());
                         string user = m.Groups[1].ToString();
-
-                        HandleLeave(user);
+                                                
+                        // display leave message
+                        if (vzConfig.PlayerConnMessages) LeaveMessage(user);
                     };
                     playerEventsMade = true;
                 }
@@ -217,7 +209,7 @@ namespace VellumZero
             _bus = null;
             LoadConfiguration();
             Initialize(Host);
-            if (vzConfig.EnableVZ && vzConfig.ServerSync.EnableServerSync)
+            if (vzConfig.EnableVZ && vzConfig.ServerSync.EnableServerSync && (sawChatAPIstring || sawCmdAPIstring))
             {
                 _bus = new EZBus(this);
                 _bus.chatSupportLoaded = sawChatAPIstring;
@@ -272,7 +264,7 @@ namespace VellumZero
             Broadcast(String.Format(vzConfig.VZStrings.ChatMsg, a.Server, a.User, a.Text));
         }
 
-        private void HandleJoin(string user)
+        private void JoinMessage(string user)
         {
             MessageEventArgs a = new MessageEventArgs(Host.WorldName, user, "");
             CallHook(Hook.LOC_PLAYER_CONN, a);
@@ -280,7 +272,7 @@ namespace VellumZero
             Broadcast(String.Format(vzConfig.VZStrings.PlayerJoinMsg, a.Server, a.User));
         }
 
-        private void HandleLeave(string user)
+        private void LeaveMessage(string user)
         {
             MessageEventArgs a = new MessageEventArgs(Host.WorldName, user, "");
             CallHook(Hook.LOC_PLAYER_DC, a);
@@ -320,48 +312,69 @@ namespace VellumZero
             else Host.Bds.SendInput(command); // this needs extra testing for character/encoding issues and if all in-game commands work this way
         }
 
-        private void StartHiVisTimers(uint s=0)
+        private void StartNotifyTimers(uint s=0)
         {
-            uint timerMins;
-            if (s > 0)
+            if (vzConfig.HiVisShutdown)
             {
-                timerMins = (s > 600) ? (s - 600)/60 : 0;
-                msCountdown = (s > 600) ? 600000 : s * 1000;
-            }
-            else if (vzConfig.AutoRestartMins > 10)
-            {
-                timerMins = vzConfig.AutoRestartMins - 10;
-                msCountdown = 600000;
+                uint timerMins;
+                if (s > 0)
+                {
+                    timerMins = (s > 600) ? (s - 600) / 60 : 0;
+                    msCountdown = (s > 600) ? 600000 : s * 1000;
+                }
+                else if (vzConfig.AutoRestartMins > 10)
+                {
+                    timerMins = vzConfig.AutoRestartMins - 10;
+                    msCountdown = 600000;
+                }
+                else
+                {
+                    timerMins = 0;
+                    msCountdown = vzConfig.AutoRestartMins * 60000;
+                }
+                // countdown for the warning messages to start
+                hiVisWarnTimer = new Timer((timerMins * 60000) + 1);
+                hiVisWarnTimer.AutoReset = false;
+                hiVisWarnTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
+                {
+                    // repeating countdown for each warning message
+                    hiVisWarnMsgs = new Timer(1000);
+                    hiVisWarnMsgs.AutoReset = true;
+                    hiVisWarnMsgs.Elapsed += (object sender, ElapsedEventArgs e) =>
+                    {
+                        msCountdown -= 1000;
+                        if ((msCountdown > 60500 && msCountdown % 60000 < 1000) || (msCountdown < 60500 && msCountdown > 10500))
+                        {
+                            Execute(String.Format("title @a actionbar " + vzConfig.VZStrings.RestartMinWarn, (int)Math.Ceiling((decimal)msCountdown / 60000m)));
+                        }
+                        else if (msCountdown < 10500)
+                        {
+                            if (vzConfig.VZStrings.RestartSecSubtl != "")
+                                Execute(String.Format("title @a actionbar " + vzConfig.VZStrings.RestartSecSubtl, (int)Math.Ceiling((decimal)msCountdown / 1000m)));
+                            if (vzConfig.VZStrings.RestartSecTitle != "")
+                                Execute(String.Format("title @a title " + vzConfig.VZStrings.RestartSecTitle, (int)Math.Ceiling((decimal)msCountdown / 1000m)));
+                        }
+                    };
+                    hiVisWarnMsgs.Start();
+                };
+                hiVisWarnTimer.Start();
             }
             else
             {
-                timerMins = 0;
-                msCountdown = vzConfig.AutoRestartMins * 60000;
-            }
-            // countdown for the warning messages to start
-            hiVisWarnTimer = new Timer((timerMins * 60000) + 1);
-            hiVisWarnTimer.AutoReset = false;
-            hiVisWarnTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
-            {
-                // repeating countdown for each warning message
-                hiVisWarnMsgs = new Timer(1000);
-                hiVisWarnMsgs.AutoReset = true;
-                hiVisWarnMsgs.Elapsed += (object sender, ElapsedEventArgs e) =>
+                uint countdown = (s > 0) ? s : (vzConfig.AutoRestartMins > 5) ? 300 : vzConfig.AutoRestartMins * 60;
+                string units = (countdown > 119) ? vzConfig.VZStrings.MinutesWord : vzConfig.VZStrings.SecondsWord;
+                countdown = (units == vzConfig.VZStrings.SecondsWord) ? countdown : countdown / 60;
+                uint timerTime = (vzConfig.AutoRestartMins > 5) ? vzConfig.AutoRestartMins - 5 : 0;
+                
+                normalWarnMsg = new Timer((timerTime * 60000) + 1);
+                normalWarnMsg.AutoReset = false;
+                normalWarnMsg.Elapsed += (object sender, ElapsedEventArgs e) =>
                 {
-                    msCountdown -= 1000;
-                    if ((msCountdown > 60500 && msCountdown % 60000 < 1000) || (msCountdown < 60500 && msCountdown > 10500))
-                    {
-                        Execute(String.Format("title @a actionbar " + vzConfig.VZStrings.RestartMinWarn, (int)Math.Ceiling((decimal)msCountdown / 60000m)));
-                    }
-                    else if (msCountdown < 10500)
-                    {
-                        Execute(String.Format("title @a actionbar " + vzConfig.VZStrings.RestartSecSubtl, (int)Math.Ceiling((decimal)msCountdown / 1000m)));
-                        Execute(String.Format("title @a title " + vzConfig.VZStrings.RestartSecTitle, (int)Math.Ceiling((decimal)msCountdown / 1000m)));
-                    }
+                    RelayToServer(String.Format(vzConfig.VZStrings.RestartOneWarn, countdown, units));
                 };
-                hiVisWarnMsgs.Start();
-            };
-            hiVisWarnTimer.Start();
+                normalWarnMsg.Start();
+            }
+            
         }
 
         private VZConfig LoadConfiguration()
@@ -410,16 +423,18 @@ namespace VellumZero
                         LogDiscDC = "Discord Disconnected",
                         LogBusConn = "Bus Connected",
                         LogEnd = "Unloading plugin",
-                        ChatMsg = "(§6{0}§r) [§e{1}§r] {2}",
-                        PlayerJoinMsg = "(§6{0}§r) [§e{1}§r] Connected",
-                        PlayerLeaveMsg = "(§6{0}§r) [§e{1}§r] Left",
+                        ChatMsg = "(§6{0}§r) <{1}> {2}",
+                        PlayerJoinMsg = "(§6{0}§r) {1} Connected",
+                        PlayerLeaveMsg = "(§6{0}§r) {1} Left",
                         ServerUpMsg = "(§6{0}§r): §aOnline§r",
                         ServerDownMsg = "(§6{0}§r): §cOffline§r",
                         MsgFromDiscord = "(§d{0}§r) [§b{1}§r] {2}",
-                        RestartOneWarn = "The server will restart in {0} minutes",
+                        RestartOneWarn = "The server will restart in {0} {1}",
                         RestartMinWarn = "§c§lLess than {0} min to scheduled restart!",
                         RestartSecTitle = "§c{0}",
-                        RestartSecSubtl = "§c§lseconds until restart",                        
+                        RestartSecSubtl = "§c§lseconds until restart",
+                        MinutesWord = "minutes",
+                        SecondsWord = "seconds"
                     }
                 };
                 using (StreamWriter writer = new StreamWriter(configFile))
@@ -486,6 +501,8 @@ namespace VellumZero
         public string RestartMinWarn;
         public string RestartSecTitle;
         public string RestartSecSubtl;
+        public string MinutesWord;
+        public string SecondsWord;
     }
 
     public class MessageEventArgs : EventArgs

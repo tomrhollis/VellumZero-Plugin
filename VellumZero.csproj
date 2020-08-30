@@ -19,6 +19,8 @@
     <None Remove="refs\Discord.Net.Rest.dll" />
     <None Remove="refs\Discord.Net.Webhook.dll" />
     <None Remove="refs\Discord.Net.WebSocket.dll" />
+    <None Remove="refs\Microsoft.Data.Sqlite.dll" />
+    <None Remove="refs\SQLitePCLRaw.core.dll" />
     <None Remove="refs\System.Collections.Immutable.dll" />
     <None Remove="refs\System.Interactive.Async.dll" />
   </ItemGroup>
@@ -39,6 +41,8 @@
     <EmbeddedResource Include="refs\Discord.Net.WebSocket.dll">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
+    <EmbeddedResource Include="refs\Microsoft.Data.Sqlite.dll" />
+    <EmbeddedResource Include="refs\SQLitePCLRaw.core.dll" />
     <EmbeddedResource Include="refs\System.Collections.Immutable.dll">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
@@ -49,6 +53,7 @@
 
   <ItemGroup>
     <PackageReference Include="Discord.Net" Version="2.2.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="3.1.7" />
     <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
   </ItemGroup>
 

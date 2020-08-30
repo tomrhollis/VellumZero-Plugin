@@ -108,6 +108,33 @@ namespace VellumZero
         }
 
         /// <summary>
+        /// Check whether the specified player is known to the server
+        /// Don't use this for the current server, use playerDB instead for compatibility when people don't use bus
+        /// </summary>
+        /// <param name="destination">which server to check for the player</param>
+        /// <param name="player">which player name/xuid/uuid to look for</param>
+        /// <returns>A string of the output from the server</returns>
+        internal string FindPlayer(string destination, string player)
+        {
+            player = CleanString(player);
+            StringContent content = new StringContent(player);
+            string address = "{0}map/{1}/find-player";
+            string result = "";
+
+            try
+            {
+                // result =
+                // console out for now to confirm what is actually happening here
+                result = httpClient.PostAsync(String.Format(address, localAddress, destination), content).Result.Content.ReadAsStringAsync().Result;
+            }
+            catch (Exception e)
+            {
+                _vz.Log("Something went wrong with the bus: " + e.Message);
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Get an update of the online status and player list of the servers on the bus
         /// </summary>
         public void UpdateStatus()
