@@ -68,6 +68,7 @@ namespace VellumZero
                     if (vzConfig.ServerSync.EnableServerSync && _bus == null)
                     {
                         _bus = new EZBus(this);
+                        if (_bus != null) _bus.Broadcast(String.Format(vzConfig.VZStrings.ServerUpMsg, Host.WorldName));
                         _bus.chatSupportLoaded = true;
                     }
                     sawChatAPIstring = true;
@@ -82,6 +83,12 @@ namespace VellumZero
                     if (_bus != null)
                     {
                         _bus.commandSupportLoaded = true;
+                        RefreshBusServerInfo();
+                        // update other servers' scoreboards
+                        foreach (string server in vzConfig.ServerSync.OtherServers)
+                        {
+                            _bus.ExecuteCommand(server, $"scoreboard players add \"{Host.WorldName}\" Servers 0");
+                        }
                         rollCallTimer.Start();
                     }
                 });
@@ -120,9 +127,8 @@ namespace VellumZero
                 {
                     Host.Bds.OnServerStarted += (object sender, EventArgs e) =>
                     {
-                        // broadcast the server online message
-                        string message = String.Format(vzConfig.VZStrings.ServerUpMsg, Host.WorldName);
-                        Broadcast(message);
+                        // broadcast the server online message                        
+                        if (_discord != null) _discord.SendMessage(String.Format(vzConfig.VZStrings.ServerUpMsg, Host.WorldName));
 
                         // set up automatic restart timer
                         if (vzConfig.AutoRestartMins > 0)
@@ -142,6 +148,15 @@ namespace VellumZero
                     };
                     Host.Bds.OnServerExited += (object sender, EventArgs e) =>
                     {
+                        // update servers' scoreboards
+                        if (_bus != null)
+                        {
+                            foreach (string server in vzConfig.ServerSync.OtherServers)
+                            {
+                                _bus.ExecuteCommand(server, $"scoreboard players reset \"{Host.WorldName}\" Servers");
+                            }
+                        }
+
                         // send server disconnect message
                         string message = String.Format(vzConfig.VZStrings.ServerDownMsg, Host.WorldName);
                         if (_bus != null) _bus.Broadcast(message);
@@ -192,6 +207,16 @@ namespace VellumZero
 
                         // display join message
                         if (vzConfig.PlayerConnMessages) JoinMessage(user);
+
+                        // update all servers
+                        if (_bus != null)
+                        {
+                            foreach(string server in vzConfig.ServerSync.OtherServers)
+                            {
+                                _bus.ExecuteCommand(server, $"scoreboard players add \"{user}\" Online 0");
+                                _bus.ExecuteCommand(server, $"scoreboard players add \"{Host.WorldName}\" Servers 1");
+                            }
+                        }
                     };
 
                     Host.Bds.OnPlayerLeft += (object sender, MatchedEventArgs e) =>
@@ -202,34 +227,28 @@ namespace VellumZero
                                                 
                         // display leave message
                         if (vzConfig.PlayerConnMessages) LeaveMessage(user);
+
+                        // update all servers
+                        if (_bus != null)
+                        {
+                            foreach(string server in vzConfig.ServerSync.OtherServers)
+                            {
+                                _bus.ExecuteCommand(server, $"scoreboard players reset \"{user}\" Online");
+                                _bus.ExecuteCommand(server, $"scoreboard players remove \"{Host.WorldName}\" Servers 1");
+                            }
+                        }
                     };
                     playerEventsMade = true;
                 }
             }
             if (vzConfig.ServerSync.EnableServerSync)
             {
-                rollCallTimer = new Timer(10000);
+                // double check player lists and servers every 5 minutes
+                rollCallTimer = new Timer(300000);
                 rollCallTimer.AutoReset = true;
                 rollCallTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
                 {
-                    List<string> players = new List<string>();
-                    // get list of people from other servers
-                    foreach(string server in vzConfig.ServerSync.OtherServers)
-                    {
-                        string result = _bus.ExecuteCommand(server, "list");
-                        if (result == "") continue;
-                        Regex r = new Regex("\"players\": \"(.+?)\"");
-                        players.AddRange(r.Match(result).Groups[1].ToString().Split(',').ToList());
-                    }
-                    // apply that list to the scoreboard
-                    Execute("scoreboard objectives remove Online");
-                    Execute("scoreboard objectives add Online dummy Online");
-                    Execute("scoreboard objectives setdisplay list Online");
-                    foreach(string player in players)
-                    {
-                        if (player.Length < 2) continue;
-                        Execute($"scoreboard players add \"{player}\" Online 0");
-                    }
+                    RefreshBusServerInfo();                    
                 };                
             }
         }
@@ -287,6 +306,41 @@ namespace VellumZero
                 _hookCallbacks[(byte)hook]?.Invoke(this, e);
         }
         #endregion
+
+        private void RefreshBusServerInfo()
+        {            
+            Execute("scoreboard objectives add Servers dummy Servers");
+            List<string> players = new List<string>();
+            // get list of people from other servers
+            foreach (string server in vzConfig.ServerSync.OtherServers)
+            {
+                Execute($"scoreboard players reset \"{server}\" Servers");
+                string result = _bus.ExecuteCommand(server, "list");
+                if (result != "")
+                {
+                    // update the online count from those servers while we're at it
+                    Regex r = new Regex("\"currentPlayerCount\": (\\d+),");
+                    Match m = r.Match(result);
+                    if (m.Groups.Count > 1)
+                        Execute($"scoreboard players add \"{server}\" Servers {m.Groups[1]}");
+
+                    // parse the player list
+                    r = new Regex("\"players\": \"([^\"]+?)\"");
+                    m = r.Match(result);
+                    if (m.Groups.Count > 1)
+                        players.AddRange(m.Groups[1].ToString().Split(',').ToList());
+                }                
+            }
+            // apply that list to the scoreboard     
+            Execute("scoreboard objectives remove Online");
+            Execute("scoreboard objectives add Online dummy Online");
+            Execute("scoreboard objectives setdisplay list Online");
+            foreach (string player in players)
+            {
+                if (player.Length < 2) continue;
+                Execute($"scoreboard players add \"{player}\" Online 0");
+            }
+        }
 
         private void HandleChat(string user, string chat)
         {
