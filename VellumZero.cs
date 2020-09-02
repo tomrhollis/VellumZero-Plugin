@@ -334,7 +334,7 @@ namespace VellumZero
             // apply that list to the scoreboard     
             Execute("scoreboard objectives remove Online");
             Execute("scoreboard objectives add Online dummy Online");
-            Execute("scoreboard objectives setdisplay list Online");
+            if (vzConfig.ServerSync.OnlineList) Execute("scoreboard objectives setdisplay list Online");
             foreach (string player in players)
             {
                 if (player.Length < 2) continue;
@@ -499,7 +499,8 @@ namespace VellumZero
                         EnableServerSync = false,
                         OtherServers = new string[] { },
                         BusAddress = "127.0.0.1",
-                        BusPort = 8234
+                        BusPort = 8234,
+                        OnlineList = true
                     },
                     VZStrings = new VZTextConfig()
                     {
@@ -567,6 +568,7 @@ namespace VellumZero
         public string[] OtherServers;
         public string BusAddress;
         public uint BusPort;
+        public bool OnlineList;
     }
 
     public struct VZTextConfig
