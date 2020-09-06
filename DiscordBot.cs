@@ -95,7 +95,7 @@ namespace VellumZero
             }
 
             // handle size and text type exclusions (lots of extended unicode can cause client performance issues)
-            if (dsConfig.LatinOnly) msgText = Regex.Replace(msgText, @"[\P{IsBasicLatin}]", "");
+            if (dsConfig.LatinOnly) msgText = Regex.Replace(msgText, @"[^\u0009-\u024f]", "");
             if (dsConfig.DiscordCharLimit > 0 && msgText.Length > dsConfig.DiscordCharLimit)
                 msgText = msgText.Substring(0, dsConfig.DiscordCharLimit) + "...";
             msgText = Regex.Replace(msgText, @"[\r\n]{1,2}", "\\n");
