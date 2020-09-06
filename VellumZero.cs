@@ -87,7 +87,7 @@ namespace VellumZero
                         // update other servers' scoreboards
                         foreach (string server in vzConfig.ServerSync.OtherServers)
                         {
-                            _bus.ExecuteCommand(server, $"scoreboard players add \"{Host.WorldName}\" Servers 0");
+                            _bus.ExecuteCommand(server, $"scoreboard players add \"{Host.WorldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" 0");
                         }
                         rollCallTimer.Start();
                     }
@@ -153,7 +153,7 @@ namespace VellumZero
                         {
                             foreach (string server in vzConfig.ServerSync.OtherServers)
                             {
-                                _bus.ExecuteCommand(server, $"scoreboard players reset \"{Host.WorldName}\" Servers");
+                                _bus.ExecuteCommand(server, $"scoreboard players reset \"{Host.WorldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\"");
                             }
                         }
 
@@ -213,8 +213,8 @@ namespace VellumZero
                         {
                             foreach(string server in vzConfig.ServerSync.OtherServers)
                             {
-                                _bus.ExecuteCommand(server, $"scoreboard players add \"{user}\" Online 0");
-                                _bus.ExecuteCommand(server, $"scoreboard players add \"{Host.WorldName}\" Servers 1");
+                                _bus.ExecuteCommand(server, $"scoreboard players add \"{user}\" \"{vzConfig.ServerSync.OnlineListScoreboard}\" 0");
+                                _bus.ExecuteCommand(server, $"scoreboard players add \"{Host.WorldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" 1");
                             }
                         }
                     };
@@ -233,8 +233,8 @@ namespace VellumZero
                         {
                             foreach(string server in vzConfig.ServerSync.OtherServers)
                             {
-                                _bus.ExecuteCommand(server, $"scoreboard players reset \"{user}\" Online");
-                                _bus.ExecuteCommand(server, $"scoreboard players remove \"{Host.WorldName}\" Servers 1");
+                                _bus.ExecuteCommand(server, $"scoreboard players reset \"{user}\" \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
+                                _bus.ExecuteCommand(server, $"scoreboard players remove \"{Host.WorldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" 1");
                             }
                         }
                     };
@@ -309,12 +309,12 @@ namespace VellumZero
 
         private void RefreshBusServerInfo()
         {            
-            Execute("scoreboard objectives add Servers dummy Servers");
+            Execute($"scoreboard objectives add \"{vzConfig.ServerSync.ServerListScoreboard}\" dummy \"{vzConfig.ServerSync.ServerListScoreboard}\"");
             List<string> players = new List<string>();
             // get list of people from other servers
             foreach (string server in vzConfig.ServerSync.OtherServers)
             {
-                Execute($"scoreboard players reset \"{server}\" Servers");
+                Execute($"scoreboard players reset \"{server}\" \"{vzConfig.ServerSync.ServerListScoreboard}\"");
                 string result = _bus.ExecuteCommand(server, "list");
                 if (result != "")
                 {
@@ -322,7 +322,7 @@ namespace VellumZero
                     Regex r = new Regex("\"currentPlayerCount\": (\\d+),");
                     Match m = r.Match(result);
                     if (m.Groups.Count > 1)
-                        Execute($"scoreboard players add \"{server}\" Servers {m.Groups[1]}");
+                        Execute($"scoreboard players add \"{server}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" {m.Groups[1]}");
 
                     // parse the player list
                     r = new Regex("\"players\": \"([^\"]+?)\"");
@@ -332,9 +332,9 @@ namespace VellumZero
                 }                
             }
             // apply that list to the scoreboard     
-            Execute("scoreboard objectives remove Online");
-            Execute("scoreboard objectives add Online dummy Online");
-            if (vzConfig.ServerSync.OnlineList) Execute("scoreboard objectives setdisplay list Online");
+            Execute($"scoreboard objectives remove \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
+            Execute($"scoreboard objectives add \"{vzConfig.ServerSync.OnlineListScoreboard}\" dummy \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
+            if (vzConfig.ServerSync.DisplayOnlineList) Execute($"scoreboard objectives setdisplay list \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
             foreach (string player in players)
             {
                 if (player.Length < 2) continue;
@@ -378,7 +378,7 @@ namespace VellumZero
         private void Broadcast(string message)
         {
             if (_discord != null) _discord.SendMessage(message);
-            if (_bus != null) _bus.Broadcast(message);
+            if (vzConfig.ServerSync.BroadcastChat && _bus != null) _bus.Broadcast(message);
         }
 
         internal void RelayToServer(string message)
@@ -500,7 +500,10 @@ namespace VellumZero
                         OtherServers = new string[] { },
                         BusAddress = "127.0.0.1",
                         BusPort = 8234,
-                        OnlineList = true
+                        BroadcastChat = true,
+                        DisplayOnlineList = true,
+                        OnlineListScoreboard = "Online",
+                        ServerListScoreboard = "Servers"
                     },
                     VZStrings = new VZTextConfig()
                     {
@@ -568,7 +571,10 @@ namespace VellumZero
         public string[] OtherServers;
         public string BusAddress;
         public uint BusPort;
-        public bool OnlineList;
+        public bool BroadcastChat;
+        public bool DisplayOnlineList;
+        public string OnlineListScoreboard;
+        public string ServerListScoreboard;
     }
 
     public struct VZTextConfig
