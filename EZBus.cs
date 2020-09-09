@@ -73,7 +73,7 @@ namespace VellumZero
 
             try
             {
-                httpClient.PostAsync(String.Format(address, localAddress, destination), content);
+                string result = httpClient.PostAsync(String.Format(address, localAddress, destination), content).Result.Content.ReadAsStringAsync().Result;                
             }
             catch (Exception e)
             {
@@ -121,8 +121,6 @@ namespace VellumZero
 
             try
             {
-                // result =
-                // console out for now to confirm what is actually happening here
                 result = httpClient.PostAsync(String.Format(address, localAddress, destination), content).Result.Content.ReadAsStringAsync().Result;
             }
             catch (Exception e)
@@ -130,14 +128,6 @@ namespace VellumZero
                 _vz.Log("Something went wrong with the bus: " + e.Message);
             }
             return result;
-        }
-
-        /// <summary>
-        /// Get an update of the online status and player list of the servers on the bus
-        /// </summary>
-        public void UpdateStatus()
-        {
-            throw new NotImplementedException();
         }
     }
 }
