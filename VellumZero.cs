@@ -4,7 +4,6 @@
 // August 2020
 
 using System.Collections.Generic;
-using Newtonsoft.Json;
 using System.IO;
 using Vellum.Extension;
 using System;
@@ -45,6 +44,7 @@ namespace VellumZero
 
         #region PLUGIN
         internal IHost Host;
+        private string _worldName = "Bedrock level";
         public PluginType PluginType { get { return PluginType.EXTERNAL; } }
         private Dictionary<byte, IPlugin.HookHandler> _hookCallbacks = new Dictionary<byte, IPlugin.HookHandler>();
         public enum Hook
@@ -57,27 +57,105 @@ namespace VellumZero
             DISCORD_REC,
         }
 
+        ProcessManager bds;
+        BackupManager backupManager;
+        RenderManager renderManager;
+        Watchdog bdsWatchdog;
+
+        // This is required to load the plugins default settings when it gets registered by the host for the very first time
+        public static object GetDefaultRunConfiguration()
+        {
+            return new VZConfig()
+            {
+                EnableVZ = false,
+                PlayerConnMessages = true,
+                ServerStatusMessages = true,
+                AutoRestartMins = 1440,
+                HiVisShutdown = false,
+                IgnorePatterns = new String[] { },
+                DiscordSync = new DiscordSyncConfig()
+                {
+                    EnableDiscordSync = false,
+                    DiscordToken = "",
+                    DiscordChannel = 0,
+                    DiscordMentions = true,
+                    LatinOnly = false,
+                    DiscordCharLimit = 0
+                },
+                ServerSync = new ServerSyncConfig()
+                {
+                    EnableServerSync = false,
+                    OtherServers = new string[] { },
+                    BusAddress = "127.0.0.1",
+                    BusPort = 8234,
+                    BroadcastChat = true,
+                    DisplayOnlineList = true,
+                    OnlineListScoreboard = "Online",
+                    ServerListScoreboard = "Servers"
+                },
+                VZStrings = new VZTextConfig()
+                {
+                    LogInit = "Initialized",
+                    LogDiscInit = "Starting Discord",
+                    LogDiscLib = "Discord Libraries Loaded",
+                    LogDiscConn = "Discord Connected",
+                    LogDiscDC = "Discord Disconnected",
+                    LogBusConn = "Bus Connected",
+                    LogEnd = "Unloading plugin",
+                    ChatMsg = "(§6{0}§r) <{1}> {2}",
+                    PlayerJoinMsg = "(§6{0}§r) {1} Connected",
+                    PlayerLeaveMsg = "(§6{0}§r) {1} Left",
+                    ServerUpMsg = "(§6{0}§r): §aOnline§r",
+                    ServerDownMsg = "(§6{0}§r): §cOffline§r",
+                    MsgFromDiscord = "(§d{0}§r) [§b{1}§r] {2}",
+                    RestartOneWarn = "The server will restart in {0} {1}",
+                    RestartMinWarn = "§c§lLess than {0} min to scheduled restart!",
+                    RestartSecTitle = "§c{0}",
+                    RestartSecSubtl = "§c§lseconds until restart",
+                    MinutesWord = "minutes",
+                    SecondsWord = "seconds"
+                }
+            };
+        }
+
         public void Initialize(IHost host)
         {
             Host = host;
-            vzConfig = LoadConfiguration();
+
+            // Load the plugin configuration from the hosts run-config
+            vzConfig = host.LoadPluginConfiguration<VZConfig>(this.GetType());
+
+            System.Console.WriteLine(vzConfig.ServerSync.BusAddress);
+
+            // Probably have to rework the plugin system a bit to expose stuff like the world name like in your fork...
+            // In the meantime loading the server.properties once again should do the job :D.
+            // - clarkx86
+
+            using (StreamReader reader = new StreamReader(File.OpenRead(Path.Join(Path.GetDirectoryName(host.RunConfig.BdsBinPath), "server.properties"))))
+                _worldName = Regex.Match(reader.ReadToEnd(), @"^level\-name\=(.+)", RegexOptions.Multiline).Groups[1].Value;
+
+
+            bds = (ProcessManager)host.GetPluginByName("ProcessManager");
+            backupManager = (BackupManager)host.GetPluginByName("BackupManager");
+            renderManager = (RenderManager)host.GetPluginByName("RenderManager");
+            bdsWatchdog = (Watchdog)host.GetPluginByName("Watchdog");
 
             // need to make these events even if plugin is disabled so if vellum is reloaded to enable it we'll have the info they get
             if (!busEventsMade)
             {
                 // detect that the bus is loaded properly for chat
-                Host.Bds.RegisterMatchHandler(@".+\[Bus\].+Load builtin extension for ChatAPI$", (object sender, MatchedEventArgs e) =>
+                bds.RegisterMatchHandler(@".+\[Bus\].+Load builtin extension for ChatAPI$", (object sender, MatchedEventArgs e) =>
                 {
                     if (vzConfig.ServerSync.EnableServerSync && _bus == null)
                     {
                         _bus = new EZBus(this);
-                        if (vzConfig.ServerStatusMessages) _bus.Broadcast(String.Format(vzConfig.VZStrings.ServerUpMsg, Host.WorldName));
+                        if (vzConfig.ServerStatusMessages) _bus.Broadcast(String.Format(vzConfig.VZStrings.ServerUpMsg, _worldName));
                         _bus.chatSupportLoaded = true;
                     }
                     sawChatAPIstring = true;
                 });
                 // detect that the bus is loaded properly for commands 
-                Host.Bds.RegisterMatchHandler(@".+\[Bus\].+Load builtin extension for CommandSupport$", (object sender, MatchedEventArgs e) =>
+                bds.RegisterMatchHandler(@".+\[Bus\].+Load builtin extension for CommandSupport$", (object sender, MatchedEventArgs e) =>
                 {
                     Regex r = new Regex(@".+\[CHAT\].+");
                     Match m = r.Match(e.Matches[0].ToString());
@@ -90,21 +168,21 @@ namespace VellumZero
                         // update other servers' scoreboards
                         foreach (string server in vzConfig.ServerSync.OtherServers)
                         {
-                            _bus.ExecuteCommand(server, $"scoreboard players add \"{Host.WorldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" 0");
+                            _bus.ExecuteCommand(server, $"scoreboard players add \"{_worldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" 0");
                         }
                         rollCallTimer.Start();
                     }
                 });
                 // add console ignore patterns
-                foreach(string s in vzConfig.IgnorePatterns)
+                foreach (string s in vzConfig.IgnorePatterns)
                 {
-                    Host.Bds.AddConsoleIgnorePattern(s);
+                    bds.AddIgnorePattern(s);
                 }
                 busEventsMade = true;
             }
             if (!vzConfig.EnableVZ) return;
             Log(vzConfig.VZStrings.LogInit);
-                                    
+
             if (vzConfig.ServerSync.EnableServerSync || vzConfig.DiscordSync.EnableDiscordSync)
             {
                 // load the embedded resources for discord connectivity
@@ -112,31 +190,19 @@ namespace VellumZero
                 {
                     if (!discLibrariesLoaded)
                     {
-                        // tell the runtime how to find embedded assemblies
-                        // (note: if someone else loads a library with the same name first, it should use the one already loaded in theory)
-                        AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(
-                                (object sender, ResolveEventArgs args) => { return EmbeddedAssembly.Get(args.Name); });
-
-                        EmbeddedAssembly.Load("System.Collections.Immutable.dll");
-                        EmbeddedAssembly.Load("System.Interactive.Async.dll");
-                        EmbeddedAssembly.Load("Discord.Net.Core.dll");
-                        EmbeddedAssembly.Load("Discord.Net.Commands.dll");
-                        EmbeddedAssembly.Load("Discord.Net.Rest.dll");
-                        EmbeddedAssembly.Load("Discord.Net.Webhook.dll");
-                        EmbeddedAssembly.Load("Discord.Net.WebSocket.dll");
                         discLibrariesLoaded = true;
                         Log(vzConfig.VZStrings.LogDiscLib);
-                    }                                        
-                    _discord = new DiscordBot(this);                    
+                    }
+                    _discord = new DiscordBot(this);
                 }
 
                 // set up events for server up/down: online/offline messages & auto restart handling
                 if (!serverEventsMade)
                 {
-                    Host.Bds.OnServerStarted += (object sender, EventArgs e) =>
+                    bds.RegisterMatchHandler(Vellum.CommonRegex.ServerStarted, (object sender, MatchedEventArgs e) =>
                     {
                         // broadcast the server online message                        
-                        if (_discord != null && vzConfig.ServerStatusMessages) _discord.SendMessage(String.Format(vzConfig.VZStrings.ServerUpMsg, Host.WorldName));
+                        if (_discord != null && vzConfig.ServerStatusMessages) _discord.SendMessage(String.Format(vzConfig.VZStrings.ServerUpMsg, _worldName));
 
                         // start tracking backup and render times
                         if (lastBackup == null) lastBackup = DateTime.Now;
@@ -167,8 +233,8 @@ namespace VellumZero
                             int offset = 0;
                             int tries = 0;
                             while ((tries < 3) &&
-                                (Math.Abs(IHost.RunConfig.Backups.BackupInterval - DateTime.Now.Subtract(lastBackup).Minutes - (vzConfig.AutoRestartMins + offset)) < 10) &&
-                                (Math.Abs(IHost.RunConfig.Renders.RenderInterval - DateTime.Now.Subtract(lastRender).Minutes - (vzConfig.AutoRestartMins + offset)) < 10))
+                                (Math.Abs(Host.RunConfig.Backups.BackupInterval - DateTime.Now.Subtract(lastBackup).Minutes - (vzConfig.AutoRestartMins + offset)) < 10) &&
+                                (Math.Abs(Host.RunConfig.Renders.RenderInterval - DateTime.Now.Subtract(lastRender).Minutes - (vzConfig.AutoRestartMins + offset)) < 10))
                             {
                                 offset += 10;
                                 tries++;
@@ -178,9 +244,9 @@ namespace VellumZero
                             autoRestartTimer.AutoReset = false;
                             autoRestartTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
                             {
-                                if (!Host.Bds.Processing) 
+                                if (!backupManager.Processing && !renderManager.Processing)
                                 {
-                                    Host.Bds.SendInput("stop");
+                                    bds.SendInput("stop");
                                 }
                                 else  // this shouldn't be possible due to the time check, but just in case.
                                 {     // if anyone actually sees this message on their server let me know
@@ -191,33 +257,36 @@ namespace VellumZero
 
                             // set up shutdown messages
                             StartNotifyTimers();
-                            
+
                             autoRestartTimer.Start();
                         }
-                    };
-                    Host.Bds.OnServerExited += (object sender, EventArgs e) =>
+                    });
+
+                    bds.Process.Exited += (object sender, EventArgs e) =>
                     {
                         // update servers' scoreboards
                         if (_bus != null)
                         {
                             foreach (string server in vzConfig.ServerSync.OtherServers)
                             {
-                                _bus.ExecuteCommand(server, $"scoreboard players reset \"{Host.WorldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\"");
+                                _bus.ExecuteCommand(server, $"scoreboard players reset \"{_worldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\"");
                             }
                         }
 
                         // send server disconnect message
                         if (vzConfig.ServerStatusMessages)
                         {
-                            string message = String.Format(vzConfig.VZStrings.ServerDownMsg, Host.WorldName);
-                            if (_discord != null) _discord.SendMessage(message).GetAwaiter().GetResult(); 
+                            string message = String.Format(vzConfig.VZStrings.ServerDownMsg, _worldName);
+                            if (_discord != null) _discord.SendMessage(message).GetAwaiter().GetResult();
                             if (_bus != null) _bus.Broadcast(message);
-                            
+
                         }
 
                         StopTimers();
-                    };                    
-                    Host.Bds.OnShutdownScheduled += (object sender, ShutdownScheduledEventArgs e) =>
+                    };
+
+                    /*
+                    bds.OnShutdownScheduled += (object sender, ShutdownScheduledEventArgs e) =>
                     {
                         // if someone already ran "stop ##" in the console, doing it again doesn't overwrite the previous timer
                         // so if this has already happened, don't redo anything here
@@ -228,12 +297,13 @@ namespace VellumZero
                             alreadyStopping = true;
                         }
                     };
+                    */
                     serverEventsMade = true;
                 }
 
                 if (!chatEventMade)
                 {
-                    Host.Bds.RegisterMatchHandler(@".+\[CHAT\](.+)", (object sender, MatchedEventArgs e) =>
+                    bds.RegisterMatchHandler(@".+\[CHAT\](.+)", (object sender, MatchedEventArgs e) =>
                     {
                         Regex r = new Regex(@"\[.+\].+\[(.+)\] (.+)");
                         Match m = r.Match(e.Matches[0].ToString());
@@ -252,7 +322,7 @@ namespace VellumZero
                 // set up player join/leave event messages
                 if (!playerEventsMade)
                 {
-                    Host.Bds.OnPlayerJoined += (object sender, MatchedEventArgs e) =>
+                    bds.RegisterMatchHandler(Vellum.CommonRegex.PlayerConnected, (object sender, MatchedEventArgs e) =>
                     {
                         Regex r = new Regex(@": (.+),");
                         Match m = r.Match(e.Matches[0].ToString());
@@ -264,33 +334,33 @@ namespace VellumZero
                         // update all servers
                         if (_bus != null)
                         {
-                            foreach(string server in vzConfig.ServerSync.OtherServers)
+                            foreach (string server in vzConfig.ServerSync.OtherServers)
                             {
                                 _bus.ExecuteCommand(server, $"scoreboard players add \"{user}\" \"{vzConfig.ServerSync.OnlineListScoreboard}\" 0");
-                                _bus.ExecuteCommand(server, $"scoreboard players add \"{Host.WorldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" 1");
+                                _bus.ExecuteCommand(server, $"scoreboard players add \"{_worldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" 1");
                             }
                         }
-                    };
+                    });
 
-                    Host.Bds.OnPlayerLeft += (object sender, MatchedEventArgs e) =>
+                    bds.RegisterMatchHandler(Vellum.CommonRegex.PlayerDisconnected, (object sender, MatchedEventArgs e) =>
                     {
                         Regex r = new Regex(@": (.+),");
                         Match m = r.Match(e.Matches[0].ToString());
                         string user = m.Groups[1].ToString();
-                                                
+
                         // display leave message
                         if (vzConfig.PlayerConnMessages) LeaveMessage(user);
 
                         // update all servers
                         if (_bus != null)
                         {
-                            foreach(string server in vzConfig.ServerSync.OtherServers)
+                            foreach (string server in vzConfig.ServerSync.OtherServers)
                             {
                                 _bus.ExecuteCommand(server, $"scoreboard players reset \"{user}\" \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
-                                _bus.ExecuteCommand(server, $"scoreboard players remove \"{Host.WorldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" 1");
+                                _bus.ExecuteCommand(server, $"scoreboard players remove \"{_worldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" 1");
                             }
                         }
-                    };
+                    });
                     playerEventsMade = true;
                 }
             }
@@ -301,8 +371,8 @@ namespace VellumZero
                 rollCallTimer.AutoReset = true;
                 rollCallTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
                 {
-                    RefreshBusServerInfo();                    
-                };                
+                    RefreshBusServerInfo();
+                };
             }
         }
 
@@ -311,7 +381,6 @@ namespace VellumZero
             Unload();
             _discord = null;
             _bus = null;
-            LoadConfiguration();
             Initialize(Host);
             if (vzConfig.EnableVZ && vzConfig.ServerSync.EnableServerSync && (sawChatAPIstring || sawCmdAPIstring))
             {
@@ -346,11 +415,11 @@ namespace VellumZero
             if (!_hookCallbacks.ContainsKey(id))
             {
                 _hookCallbacks.Add(id, callback);
-            } 
+            }
             else
             {
                 _hookCallbacks[id] += callback;
-            }            
+            }
         }
 
         internal void CallHook(Hook hook, EventArgs e = null)
@@ -361,7 +430,7 @@ namespace VellumZero
         #endregion
 
         private void RefreshBusServerInfo()
-        {            
+        {
             Execute($"scoreboard objectives add \"{vzConfig.ServerSync.ServerListScoreboard}\" dummy \"{vzConfig.ServerSync.ServerListScoreboard}\"");
             List<string> players = new List<string>();
             // get list of people from other servers
@@ -382,7 +451,7 @@ namespace VellumZero
                     m = r.Match(result);
                     if (m.Groups.Count > 1)
                         players.AddRange(m.Groups[1].ToString().Split(',').ToList());
-                }                
+                }
             }
             // apply that list to the scoreboard     
             Execute($"scoreboard objectives remove \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
@@ -397,7 +466,7 @@ namespace VellumZero
 
         private void HandleChat(string user, string chat)
         {
-            MessageEventArgs a = new MessageEventArgs(Host.WorldName, user, chat);
+            MessageEventArgs a = new MessageEventArgs(_worldName, user, chat);
             CallHook(Hook.LOC_PLAYER_CHAT, a);
 
             Broadcast(String.Format(vzConfig.VZStrings.ChatMsg, a.Server, a.User, a.Text));
@@ -405,7 +474,7 @@ namespace VellumZero
 
         private void JoinMessage(string user)
         {
-            MessageEventArgs a = new MessageEventArgs(Host.WorldName, user, "");
+            MessageEventArgs a = new MessageEventArgs(_worldName, user, "");
             CallHook(Hook.LOC_PLAYER_CONN, a);
 
             Broadcast(String.Format(vzConfig.VZStrings.PlayerJoinMsg, a.Server, a.User));
@@ -413,7 +482,7 @@ namespace VellumZero
 
         private void LeaveMessage(string user)
         {
-            MessageEventArgs a = new MessageEventArgs(Host.WorldName, user, "");
+            MessageEventArgs a = new MessageEventArgs(_worldName, user, "");
             CallHook(Hook.LOC_PLAYER_DC, a);
 
             Broadcast(String.Format(vzConfig.VZStrings.PlayerLeaveMsg, a.Server, a.User));
@@ -434,11 +503,16 @@ namespace VellumZero
             if (vzConfig.ServerSync.BroadcastChat && _bus != null) _bus.Broadcast(message);
         }
 
+        private void SendTellraw(string message)
+        {
+            bds.SendInput("/tellraw @a {\"rawtext\":[{\"text\":\"" + message + "\"}]}");
+        }
+
         internal void RelayToServer(string message)
         {
             // if there's a bus, use that to avoid console confirmation messages. Otherwise use console
-            if (_bus != null && _bus.chatSupportLoaded) _bus.Announce(Host.WorldName, message);
-            else Host.Bds.SendTellraw(prefix: "", message: message);                        
+            if (_bus != null && _bus.chatSupportLoaded) _bus.Announce(_worldName, message);
+            else SendTellraw(message);
         }
 
         /// <summary>
@@ -446,13 +520,13 @@ namespace VellumZero
         /// </summary>
         /// <param name="command">the command to run</param>
         /// <param name="avoidBus">if true, use SendInput even if the bus is active</param>
-        public void Execute(string command, bool avoidBus=false)
+        public void Execute(string command, bool avoidBus = false)
         {
-            if (_bus != null && _bus.commandSupportLoaded && !avoidBus) _bus.ExecuteCommand(Host.WorldName, command); // make sure all console commands work this way
-            else Host.Bds.SendInput(command); // this needs extra testing for character/encoding issues and if all in-game commands work this way
+            if (_bus != null && _bus.commandSupportLoaded && !avoidBus) _bus.ExecuteCommand(_worldName, command); // make sure all console commands work this way
+            else bds.SendInput(command); // this needs extra testing for character/encoding issues and if all in-game commands work this way
         }
 
-        private void StartNotifyTimers(uint s=0)
+        private void StartNotifyTimers(uint s = 0)
         {
             if (vzConfig.HiVisShutdown)
             {
@@ -505,7 +579,7 @@ namespace VellumZero
                 string units = (countdown > 119) ? vzConfig.VZStrings.MinutesWord : vzConfig.VZStrings.SecondsWord;
                 countdown = (units == vzConfig.VZStrings.SecondsWord) ? countdown : countdown / 60;
                 uint timerTime = (vzConfig.AutoRestartMins > 5) ? vzConfig.AutoRestartMins - 5 : 0;
-                
+
                 normalWarnMsg = new Timer((timerTime * 60000) + 1);
                 normalWarnMsg.AutoReset = false;
                 normalWarnMsg.Elapsed += (object sender, ElapsedEventArgs e) =>
@@ -514,94 +588,15 @@ namespace VellumZero
                 };
                 normalWarnMsg.Start();
             }
-            
-        }
 
-        private VZConfig LoadConfiguration()
-        {
-            VZConfig vzConfig;
-            string configFile = Path.Join(Directory.GetCurrentDirectory(), Host.PluginDir, "VellumZero.json");
-
-            if (File.Exists(configFile))
-            {
-                using (StreamReader reader = new StreamReader(configFile))
-                {
-                    vzConfig = JsonConvert.DeserializeObject<VZConfig>(reader.ReadToEnd());
-                }
-
-                // write it out again, in case there are new options
-                using (StreamWriter writer = new StreamWriter(configFile))
-                {
-                    writer.Write(JsonConvert.SerializeObject(vzConfig, Formatting.Indented));
-                }
-            }
-            else
-            {
-                vzConfig = new VZConfig()
-                {
-                    EnableVZ = false,
-                    PlayerConnMessages = true,
-                    ServerStatusMessages = true,
-                    AutoRestartMins = 1440,
-                    HiVisShutdown = false,
-                    IgnorePatterns = new String[] { },
-                    DiscordSync = new DiscordSyncConfig()
-                    {
-                        EnableDiscordSync = false,
-                        DiscordToken = "",
-                        DiscordChannel = 0,
-                        DiscordMentions = true,
-                        LatinOnly = false,
-                        DiscordCharLimit = 0
-                    },
-                    ServerSync = new ServerSyncConfig()
-                    {
-                        EnableServerSync = false,
-                        OtherServers = new string[] { },
-                        BusAddress = "127.0.0.1",
-                        BusPort = 8234,
-                        BroadcastChat = true,
-                        DisplayOnlineList = true,
-                        OnlineListScoreboard = "Online",
-                        ServerListScoreboard = "Servers"
-                    },
-                    VZStrings = new VZTextConfig()
-                    {
-                        LogInit = "Initialized",
-                        LogDiscInit = "Starting Discord",
-                        LogDiscLib = "Discord Libraries Loaded",
-                        LogDiscConn = "Discord Connected",
-                        LogDiscDC = "Discord Disconnected",
-                        LogBusConn = "Bus Connected",
-                        LogEnd = "Unloading plugin",
-                        ChatMsg = "(§6{0}§r) <{1}> {2}",
-                        PlayerJoinMsg = "(§6{0}§r) {1} Connected",
-                        PlayerLeaveMsg = "(§6{0}§r) {1} Left",
-                        ServerUpMsg = "(§6{0}§r): §aOnline§r",
-                        ServerDownMsg = "(§6{0}§r): §cOffline§r",
-                        MsgFromDiscord = "(§d{0}§r) [§b{1}§r] {2}",
-                        RestartOneWarn = "The server will restart in {0} {1}",
-                        RestartMinWarn = "§c§lLess than {0} min to scheduled restart!",
-                        RestartSecTitle = "§c{0}",
-                        RestartSecSubtl = "§c§lseconds until restart",
-                        MinutesWord = "minutes",
-                        SecondsWord = "seconds"
-                    }
-                };
-                using (StreamWriter writer = new StreamWriter(configFile))
-                {
-                    writer.Write(JsonConvert.SerializeObject(vzConfig, Formatting.Indented));
-                }
-            }
-            return vzConfig;
         }
 
         internal void Log(string line)
         {
-            Host.Bds.ConsoleOut("[       VELLUMZERO       ] " + line);
+            Console.WriteLine("[       VELLUMZERO       ] " + line);
         }
     }
-       
+
 
     public struct VZConfig
     {
@@ -673,5 +668,5 @@ namespace VellumZero
             User = u;
             Text = t;
         }
-    }    
+    }
 }
