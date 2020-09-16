@@ -13,6 +13,7 @@ using System.Text.RegularExpressions;
 using System.Timers;
 using System.Linq;
 using Microsoft.VisualBasic;
+using System.Reflection;
 
 namespace VellumZero
 {
@@ -61,6 +62,7 @@ namespace VellumZero
         {
             Host = host;
             vzConfig = LoadConfiguration();
+            alreadyStopping = false;
 
             // need to make these events even if plugin is disabled so if vellum is reloaded to enable it we'll have the info they get
             if (!busEventsMade)
@@ -142,22 +144,25 @@ namespace VellumZero
                         if (lastBackup == null) lastBackup = DateTime.Now;
                         if (lastRender == null) lastRender = DateTime.Now;
 
-                        IPlugin _bm = Host.GetPluginByName("BackupManager");
-                        if (_bm != null)
+                        if (!serverEventsMade) // have to check again
                         {
-                            _bm.RegisterHook((byte)BackupManager.Hook.BEGIN, (object sender, EventArgs e) =>
+                            IPlugin _bm = Host.GetPluginByName("BackupManager");
+                            if (_bm != null)
                             {
-                                lastBackup = DateTime.Now;
-                            });
-                        }
+                                _bm.RegisterHook((byte)BackupManager.Hook.BEGIN, (object sender, EventArgs e) =>
+                                {
+                                    lastBackup = DateTime.Now;
+                                });
+                            }
 
-                        IPlugin _rm = Host.GetPluginByName("RenderManager");
-                        if (_rm != null)
-                        {
-                            _rm.RegisterHook((byte)RenderManager.Hook.BEGIN, (object sender, EventArgs e) =>
+                            IPlugin _rm = Host.GetPluginByName("RenderManager");
+                            if (_rm != null)
                             {
-                                lastRender = DateTime.Now;
-                            });
+                                _rm.RegisterHook((byte)RenderManager.Hook.BEGIN, (object sender, EventArgs e) =>
+                                {
+                                    lastRender = DateTime.Now;
+                                });
+                            }
                         }
 
                         // set up automatic restart timer
@@ -166,14 +171,15 @@ namespace VellumZero
                             // move auto restart to prevent overlap with backups and renders
                             int offset = 0;
                             int tries = 0;
-                            while ((tries < 3) &&
-                                (Math.Abs(IHost.RunConfig.Backups.BackupInterval - DateTime.Now.Subtract(lastBackup).Minutes - (vzConfig.AutoRestartMins + offset)) < 10) &&
-                                (Math.Abs(IHost.RunConfig.Renders.RenderInterval - DateTime.Now.Subtract(lastRender).Minutes - (vzConfig.AutoRestartMins + offset)) < 10))
+                            while ((tries < 10) &&
+                                (Math.Abs(IHost.RunConfig.Backups.BackupInterval - DateTime.Now.Subtract(lastBackup).Minutes - (vzConfig.AutoRestartMins + offset)) < 30) &&
+                                (Math.Abs(IHost.RunConfig.Renders.RenderInterval - DateTime.Now.Subtract(lastRender).Minutes - (vzConfig.AutoRestartMins + offset)) < 15))
                             {
-                                offset += 10;
+                                offset += 15;
                                 tries++;
                             }
 
+                            if (autoRestartTimer != null) autoRestartTimer.Stop();
                             autoRestartTimer = new Timer((vzConfig.AutoRestartMins + offset) * 60000);
                             autoRestartTimer.AutoReset = false;
                             autoRestartTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
@@ -182,19 +188,22 @@ namespace VellumZero
                                 {
                                     Host.Bds.SendInput("stop");
                                 }
-                                else  // this shouldn't be possible due to the time check, but just in case.
-                                {     // if anyone actually sees this message on their server let me know
-                                    RelayToServer("Oops, an important process is still running, can't reboot now.");
-                                    Log("Oops, an important process is still running, can't reboot now.");
+                                else  
+                                {   
+                                    // if a backup or render is still going, abort restart and try again in 30 mins
+                                    RelayToServer(vzConfig.VZStrings.RestartAbort);
+                                    Log(vzConfig.VZStrings.RestartAbort);
+                                    autoRestartTimer.Interval = 1800 * 1000;
+                                    StartNotifyTimers(1800);
                                 }
                             };
 
                             // set up shutdown messages
-                            StartNotifyTimers();
-                            
+                            StartNotifyTimers();                            
                             autoRestartTimer.Start();
                         }
                     };
+
                     Host.Bds.OnServerExited += (object sender, EventArgs e) =>
                     {
                         // update servers' scoreboards
@@ -211,19 +220,18 @@ namespace VellumZero
                         {
                             string message = String.Format(vzConfig.VZStrings.ServerDownMsg, Host.WorldName);
                             if (_discord != null) _discord.SendMessage(message).GetAwaiter().GetResult(); 
-                            if (_bus != null) _bus.Broadcast(message);
-                            
+                            if (_bus != null) _bus.Broadcast(message);                            
                         }
 
                         StopTimers();
                     };                    
+
                     Host.Bds.OnShutdownScheduled += (object sender, ShutdownScheduledEventArgs e) =>
                     {
                         // if someone already ran "stop ##" in the console, doing it again doesn't overwrite the previous timer
                         // so if this has already happened, don't redo anything here
                         if (!alreadyStopping)
                         {
-                            StopTimers();
                             StartNotifyTimers(e.Seconds);
                             alreadyStopping = true;
                         }
@@ -291,9 +299,11 @@ namespace VellumZero
                             }
                         }
                     };
+
                     playerEventsMade = true;
                 }
             }
+
             if (vzConfig.ServerSync.EnableServerSync)
             {
                 // double check player lists and servers every 5 minutes
@@ -430,7 +440,7 @@ namespace VellumZero
 
         private void Broadcast(string message)
         {
-            if (_discord != null) _discord.SendMessage(message);
+            if (_discord != null) _discord.SendMessage(message).GetAwaiter().GetResult();
             if (vzConfig.ServerSync.BroadcastChat && _bus != null) _bus.Broadcast(message);
         }
 
@@ -454,6 +464,7 @@ namespace VellumZero
 
         private void StartNotifyTimers(uint s=0)
         {
+            // high visibility shutdown timers
             if (vzConfig.HiVisShutdown)
             {
                 uint timerMins;
@@ -473,11 +484,13 @@ namespace VellumZero
                     msCountdown = vzConfig.AutoRestartMins * 60000;
                 }
                 // countdown for the warning messages to start
+                if (hiVisWarnTimer != null) hiVisWarnTimer.Stop();
                 hiVisWarnTimer = new Timer((timerMins * 60000) + 1);
                 hiVisWarnTimer.AutoReset = false;
                 hiVisWarnTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
                 {
                     // repeating countdown for each warning message
+                    if (hiVisWarnMsgs != null) hiVisWarnMsgs.Stop();
                     hiVisWarnMsgs = new Timer(1000);
                     hiVisWarnMsgs.AutoReset = true;
                     hiVisWarnMsgs.Elapsed += (object sender, ElapsedEventArgs e) =>
@@ -501,11 +514,13 @@ namespace VellumZero
             }
             else
             {
+                // normal warning message up to 5 mins out from restart
                 uint countdown = (s > 0) ? s : (vzConfig.AutoRestartMins > 5) ? 300 : vzConfig.AutoRestartMins * 60;
                 string units = (countdown > 119) ? vzConfig.VZStrings.MinutesWord : vzConfig.VZStrings.SecondsWord;
                 countdown = (units == vzConfig.VZStrings.SecondsWord) ? countdown : countdown / 60;
                 uint timerTime = (vzConfig.AutoRestartMins > 5) ? vzConfig.AutoRestartMins - 5 : 0;
-                
+
+                if (normalWarnMsg != null) normalWarnMsg.Stop();
                 normalWarnMsg = new Timer((timerTime * 60000) + 1);
                 normalWarnMsg.AutoReset = false;
                 normalWarnMsg.Elapsed += (object sender, ElapsedEventArgs e) =>
@@ -528,13 +543,7 @@ namespace VellumZero
                 {
                     vzConfig = JsonConvert.DeserializeObject<VZConfig>(reader.ReadToEnd());
                 }
-
-                // write it out again, in case there are new options
-                using (StreamWriter writer = new StreamWriter(configFile))
-                {
-                    writer.Write(JsonConvert.SerializeObject(vzConfig, Formatting.Indented));
-                }
-            }
+            } 
             else
             {
                 vzConfig = new VZConfig()
@@ -584,15 +593,19 @@ namespace VellumZero
                         RestartMinWarn = "§c§lLess than {0} min to scheduled restart!",
                         RestartSecTitle = "§c{0}",
                         RestartSecSubtl = "§c§lseconds until restart",
+                        RestartAbort = "An important process is still running, can't restart now. Trying again in 30 minutes",
                         MinutesWord = "minutes",
                         SecondsWord = "seconds"
                     }
                 };
-                using (StreamWriter writer = new StreamWriter(configFile))
-                {
-                    writer.Write(JsonConvert.SerializeObject(vzConfig, Formatting.Indented));
-                }
             }
+
+            // write it out in any case so people can see new settings that were added
+            using (StreamWriter writer = new StreamWriter(configFile))
+            {
+                writer.Write(JsonConvert.SerializeObject(vzConfig, Formatting.Indented));
+            }
+
             return vzConfig;
         }
 
@@ -657,6 +670,7 @@ namespace VellumZero
         public string RestartMinWarn;
         public string RestartSecTitle;
         public string RestartSecSubtl;
+        public string RestartAbort;
         public string MinutesWord;
         public string SecondsWord;
     }

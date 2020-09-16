@@ -71,7 +71,7 @@ namespace VellumZero
             var message = arg as SocketUserMessage;
             string msgText = message.Content;
             
-            if (message.Author.IsBot || message.Channel.Id != dsConfig.DiscordChannel) return;
+            if (message.Channel.Id != dsConfig.DiscordChannel || message.Author.Id == _client.CurrentUser.Id) return;
 
             // find user and channel mention codes
             MatchCollection userMatches = userRegex.Matches(msgText);
