@@ -285,8 +285,7 @@ namespace VellumZero
                         StopTimers();
                     };
 
-                    /*
-                    bds.OnShutdownScheduled += (object sender, ShutdownScheduledEventArgs e) =>
+                    host.RegisterHook((byte)VellumHost.Hook.EXIT_SCHEDULED, (object sender, ShutdownScheduledEventArgs e) =>
                     {
                         // if someone already ran "stop ##" in the console, doing it again doesn't overwrite the previous timer
                         // so if this has already happened, don't redo anything here
@@ -296,8 +295,7 @@ namespace VellumZero
                             StartNotifyTimers(e.Seconds);
                             alreadyStopping = true;
                         }
-                    };
-                    */
+                    });
                     serverEventsMade = true;
                 }
 
