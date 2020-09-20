@@ -39,7 +39,7 @@ namespace VellumZero
         private Timer normalWarnMsg;
         private Timer rollCallTimer;
         private uint msCountdown;
-        private bool alreadyStopping = false;
+        //private bool alreadyStopping = false;
         private DateTime lastBackup;
         private DateTime lastRender;
 
@@ -112,6 +112,7 @@ namespace VellumZero
                     RestartMinWarn = "§c§lLess than {0} min to scheduled restart!",
                     RestartSecTitle = "§c{0}",
                     RestartSecSubtl = "§c§lseconds until restart",
+                    RestartAbort = "An important process is still running, can't restart. Trying again in 30 minutes",
                     MinutesWord = "minutes",
                     SecondsWord = "seconds"
                 }
