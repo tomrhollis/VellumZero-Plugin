@@ -67,7 +67,6 @@ namespace VellumZero
         {
             return new VZConfig()
             {
-                EnableVZ = false,
                 PlayerConnMessages = true,
                 ServerStatusMessages = true,
                 AutoRestartMins = 1440,
@@ -124,6 +123,11 @@ namespace VellumZero
 
             // Load the plugin configuration from the hosts run-config
             vzConfig = host.LoadPluginConfiguration<VZConfig>(this.GetType());
+            if(vzConfig.AutoRestartMins > 0 && vzConfig.ServerSync.EnableServerSync)
+            {
+                vzConfig.AutoRestartMins = 0;
+                Log("WARNING: Auto restart doesn't play well with the bus yet.  Since the bus is enabled, auto restart has been disabled");
+            }
 
             System.Console.WriteLine(vzConfig.ServerSync.BusAddress);
 
@@ -132,7 +136,7 @@ namespace VellumZero
             // - clarkx86
 
             using (StreamReader reader = new StreamReader(File.OpenRead(Path.Join(Path.GetDirectoryName(host.RunConfig.BdsBinPath), "server.properties"))))
-                _worldName = Regex.Match(reader.ReadToEnd(), @"^level\-name\=(.+)", RegexOptions.Multiline).Groups[1].Value;
+                _worldName = Regex.Match(reader.ReadToEnd(), @"^level\-name\=(.+)", RegexOptions.Multiline).Groups[1].Value.Trim();
 
 
             bds = (ProcessManager)host.GetPluginByName("ProcessManager");
@@ -180,7 +184,6 @@ namespace VellumZero
                 }
                 busEventsMade = true;
             }
-            if (!vzConfig.EnableVZ) return;
             Log(vzConfig.VZStrings.LogInit);
 
             if (vzConfig.ServerSync.EnableServerSync || vzConfig.DiscordSync.EnableDiscordSync)
@@ -202,25 +205,23 @@ namespace VellumZero
                     bds.RegisterMatchHandler(Vellum.CommonRegex.ServerStarted, (object sender, MatchedEventArgs e) =>
                     {
                         // broadcast the server online message                        
-                        if (_discord != null && vzConfig.ServerStatusMessages) _discord.SendMessage(String.Format(vzConfig.VZStrings.ServerUpMsg, _worldName));
+                        if (_discord != null && vzConfig.ServerStatusMessages) _discord.SendMessage(String.Format(vzConfig.VZStrings.ServerUpMsg, _worldName)).GetAwaiter().GetResult();
 
                         // start tracking backup and render times
                         if (lastBackup == null) lastBackup = DateTime.Now;
                         if (lastRender == null) lastRender = DateTime.Now;
 
-                        IPlugin _bm = Host.GetPluginByName("BackupManager");
-                        if (_bm != null)
+                        if (backupManager != null)
                         {
-                            _bm.RegisterHook((byte)BackupManager.Hook.BEGIN, (object sender, EventArgs e) =>
+                            backupManager.RegisterHook((byte)BackupManager.Hook.BEGIN, (object sender, EventArgs e) =>
                             {
                                 lastBackup = DateTime.Now;
                             });
                         }
 
-                        IPlugin _rm = Host.GetPluginByName("RenderManager");
-                        if (_rm != null)
+                        if (renderManager != null)
                         {
-                            _rm.RegisterHook((byte)RenderManager.Hook.BEGIN, (object sender, EventArgs e) =>
+                            renderManager.RegisterHook((byte)RenderManager.Hook.BEGIN, (object sender, EventArgs e) =>
                             {
                                 lastRender = DateTime.Now;
                             });
@@ -382,7 +383,7 @@ namespace VellumZero
             _discord = null;
             _bus = null;
             Initialize(Host);
-            if (vzConfig.EnableVZ && vzConfig.ServerSync.EnableServerSync && (sawChatAPIstring || sawCmdAPIstring))
+            if (vzConfig.ServerSync.EnableServerSync && (sawChatAPIstring || sawCmdAPIstring))
             {
                 _bus = new EZBus(this);
                 _bus.chatSupportLoaded = sawChatAPIstring;
@@ -499,7 +500,7 @@ namespace VellumZero
 
         private void Broadcast(string message)
         {
-            if (_discord != null) _discord.SendMessage(message);
+            if (_discord != null) _discord.SendMessage(message).GetAwaiter().GetResult();
             if (vzConfig.ServerSync.BroadcastChat && _bus != null) _bus.Broadcast(message);
         }
 
@@ -600,7 +601,6 @@ namespace VellumZero
 
     public struct VZConfig
     {
-        public bool EnableVZ;
         public bool PlayerConnMessages;
         public bool ServerStatusMessages;
         public uint AutoRestartMins;
