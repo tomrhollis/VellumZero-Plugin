@@ -219,11 +219,11 @@ namespace VellumZero
                             {
                                 backupManager.RegisterHook((byte)BackupManager.Hook.BEGIN, (object sender, EventArgs e) =>
                                 {
-                                    _bm.RegisterHook((byte)BackupManager.Hook.BEGIN, (object sender, EventArgs e) =>
+                                    backupManager.RegisterHook((byte)BackupManager.Hook.BEGIN, (object sender, EventArgs e) =>
                                     {
                                         lastBackup = DateTime.Now;
                                     });
-                                }
+                                });
                             }
                             IPlugin _rm = Host.GetPluginByName("RenderManager");
                             if (_rm != null)
@@ -231,11 +231,11 @@ namespace VellumZero
                             {
                                 renderManager.RegisterHook((byte)RenderManager.Hook.BEGIN, (object sender, EventArgs e) =>
                                 {
-                                    _rm.RegisterHook((byte)RenderManager.Hook.BEGIN, (object sender, EventArgs e) =>
+                                    renderManager.RegisterHook((byte)RenderManager.Hook.BEGIN, (object sender, EventArgs e) =>
                                     {
                                         lastRender = DateTime.Now;
                                     });
-                                }
+                                });
                             }
                         }
                         // set up automatic restart timer
@@ -245,8 +245,8 @@ namespace VellumZero
                             int offset = 0;
                             int tries = 0;
                             while ((tries < 10) &&
-                                (Math.Abs(IHost.RunConfig.Backups.BackupInterval - DateTime.Now.Subtract(lastBackup).Minutes - (vzConfig.AutoRestartMins + offset)) < 30) &&
-                                (Math.Abs(IHost.RunConfig.Renders.RenderInterval - DateTime.Now.Subtract(lastRender).Minutes - (vzConfig.AutoRestartMins + offset)) < 15))
+                                (Math.Abs(Host.RunConfig.Backups.BackupInterval - DateTime.Now.Subtract(lastBackup).Minutes - (vzConfig.AutoRestartMins + offset)) < 30) &&
+                                (Math.Abs(Host.RunConfig.Renders.RenderInterval - DateTime.Now.Subtract(lastRender).Minutes - (vzConfig.AutoRestartMins + offset)) < 15))
                             {
                                 offset += 15;
                                 tries++;
