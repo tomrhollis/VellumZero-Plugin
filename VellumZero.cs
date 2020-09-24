@@ -24,19 +24,13 @@ namespace VellumZero
 
         private DiscordBot _discord;
         private EZBus _bus;
-        private bool discLibrariesLoaded = false;
         private bool serverEventsMade;
         private bool playerEventsMade;
         private bool busEventsMade;
         private bool chatEventMade;
         private bool sawChatAPIstring;
         private bool sawCmdAPIstring;
-        private Timer autoRestartTimer;
-        private Timer hiVisWarnTimer;
-        private Timer hiVisWarnMsgs;
-        private Timer normalWarnMsg;
         private Timer rollCallTimer;
-        private uint msCountdown;
         private bool crashing = false;
         //private bool alreadyStopping = false;
 
@@ -104,17 +98,9 @@ namespace VellumZero
                     ServerUpMsg = "(§6{0}§r): §aOnline§r",
                     ServerDownMsg = "(§6{0}§r): §cOffline§r",
                     MsgFromDiscord = "(§d{0}§r) [§b{1}§r] {2}",
-                    RestartOneWarn = "The server will restart in {0} {1}",
-                    RestartMinWarn = "§c§lLess than {0} min to scheduled restart!",
-                    RestartSecTitle = "§c{0}",
-                    RestartSecSubtl = "§c§lseconds until restart",
-                    RestartAbort = "An important process is still running, can't restart. Trying again in 30 minutes",
-                    MinutesWord = "minutes",
-                    SecondsWord = "seconds",
                     CrashMsg = "§c{0} crashed, attempting to revive it",
                     GiveUpMsg = "§cGiving up trying to revive {0}",
-                    RecoverMsg = "§a{0} has recovered from its crash",
-                    RestartMsg = "§6{0} is going down for a scheduled restart"
+                    RecoverMsg = "§a{0} has recovered from its crash"
                 }
             };
         }
@@ -125,12 +111,12 @@ namespace VellumZero
 
             // Load the plugin configuration from the hosts run-config
             vzConfig = host.LoadPluginConfiguration<VZConfig>(this.GetType());
-            if(vzConfig.AutoRestartTime != "" && vzConfig.ServerSync.EnableServerSync)
+         /*   if(vzConfig.AutoRestartTime != "" && vzConfig.ServerSync.EnableServerSync)
             {
                 vzConfig.AutoRestartTime = "";
                 Log("WARNING: Auto restart doesn't play well with the bus yet.  Since the bus is enabled, auto restart has been disabled");
             }
-
+         */
             System.Console.WriteLine(vzConfig.ServerSync.BusAddress);
 
             // Probably have to rework the plugin system a bit to expose stuff like the world name like in your fork...
@@ -202,56 +188,6 @@ namespace VellumZero
                     {
                         // broadcast the server online message                        
                         if (_discord != null && vzConfig.ServerStatusMessages) _discord.SendMessage(String.Format(vzConfig.VZStrings.ServerUpMsg, _worldName)).GetAwaiter().GetResult();
-
-                        // set up automatic restart timer
-                        if (vzConfig.AutoRestartTime != "")
-                        {
-                            DateTime restartTime = DateTime.Parse(vzConfig.AutoRestartTime);
-                            if (restartTime < DateTime.Now)
-                            {
-                                restartTime.AddDays(1);
-                            }
-                            double restartMins = restartTime.Subtract(DateTime.Now).TotalMinutes;
-
-                            if (autoRestartTimer != null) autoRestartTimer.Stop();
-                            autoRestartTimer = new Timer((restartMins) * 60000);
-                            autoRestartTimer.AutoReset = false;
-                            autoRestartTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
-                            {
-                                if (!backupManager.Processing && !renderManager.Processing)
-                                {
-                                    if (vzConfig.ServerStatusMessages && vzConfig.VZStrings.RestartMsg != "") Broadcast(String.Format(vzConfig.VZStrings.RestartMsg, _worldName));
-                                    bdsWatchdog.RetryLimit = 0;
-                                    bds.Close();
-                                    Log("Rebooting Server, waiting 10 seconds to be safe");
-                                    System.Threading.Thread.Sleep(10000);
-                                    bds.Start();
-                                    bdsWatchdog.RetryLimit = 3;
-
-                                    // set up for next restart
-                                    DateTime restartTime = DateTime.Parse(vzConfig.AutoRestartTime);
-                                    if (restartTime < DateTime.Now)
-                                    {
-                                        restartTime.AddDays(1);
-                                    }
-                                    double restartMins = restartTime.Subtract(DateTime.Now).TotalMinutes;
-                                    autoRestartTimer.Interval = restartMins * 60000;
-                                    autoRestartTimer.Start();
-                                }
-                                else  
-                                {   
-                                    // if a backup or render is still going, abort restart and try again in 30 mins
-                                    RelayToServer(vzConfig.VZStrings.RestartAbort);
-                                    Log(vzConfig.VZStrings.RestartAbort);
-                                    autoRestartTimer.Interval = 1800 * 1000;
-                                    StartNotifyTimers(1800);
-                                }
-                            };
-
-                            // set up shutdown messages
-                            StartNotifyTimers();
-                            autoRestartTimer.Start();
-                        }
                     });
 
                     bds.Process.Exited += (object sender, EventArgs e) =>
@@ -286,18 +222,7 @@ namespace VellumZero
                         if (vzConfig.ServerStatusMessages && vzConfig.VZStrings.RecoverMsg != "") Broadcast(String.Format(vzConfig.VZStrings.RecoverMsg, _worldName));
                     });
 
-                    /*
-                    bds.OnShutdownScheduled += (object sender, ShutdownScheduledEventArgs e) =>
-                    {
-                        // if someone already ran "stop ##" in the console, doing it again doesn't overwrite the previous timer
-                        // so if this has already happened, don't redo anything here
-                        if (!alreadyStopping)
-                        {
-                            StartNotifyTimers(e.Seconds);
-                            alreadyStopping = true;
-                        }
-                    };
-                    */
+
                     serverEventsMade = true;
                 } else if (serverEventsMade && _bus == null && (sawChatAPIstring || sawCmdAPIstring))
                 {
@@ -483,14 +408,10 @@ namespace VellumZero
 
         private void StopTimers()
         {
-            if (autoRestartTimer != null) autoRestartTimer.Stop();
-            if (hiVisWarnTimer != null) hiVisWarnTimer.Stop();
-            if (hiVisWarnMsgs != null) hiVisWarnMsgs.Stop();
-            if (normalWarnMsg != null) normalWarnMsg.Stop();
             if (rollCallTimer != null) rollCallTimer.Stop();
         }
 
-        private void Broadcast(string message)
+        public void Broadcast(string message)
         {
             if (_discord != null) _discord.SendMessage(message).GetAwaiter().GetResult();
             if (vzConfig.ServerSync.BroadcastChat && _bus != null) _bus.Broadcast(message);
@@ -498,10 +419,11 @@ namespace VellumZero
 
         private void SendTellraw(string message)
         {
+            message.Replace("\"", "'");
             bds.SendInput("/tellraw @a {\"rawtext\":[{\"text\":\"" + message + "\"}]}");
         }
 
-        internal void RelayToServer(string message)
+        public void RelayToServer(string message)
         {
             // if there's a bus, use that to avoid console confirmation messages. Otherwise use console
             if (_bus != null && _bus.chatSupportLoaded) _bus.Announce(_worldName, message);
@@ -519,81 +441,6 @@ namespace VellumZero
             else bds.SendInput(command); // this needs extra testing for character/encoding issues and if all in-game commands work this way
         }
 
-        private void StartNotifyTimers(uint s = 0)
-        {
-            DateTime restartTime = DateTime.Parse(vzConfig.AutoRestartTime);
-            if (restartTime < DateTime.Now)
-            {
-                restartTime.AddDays(1);
-            }
-            double restartMins = restartTime.Subtract(DateTime.Now).TotalMinutes;
-
-            // high visibility shutdown timers
-            if (vzConfig.HiVisShutdown)
-            {
-                uint timerMins;
-                if (s > 0)
-                {
-                    timerMins = (s > 600) ? (s - 600) / 60 : 0;
-                    msCountdown = (s > 600) ? 600000 : s * 1000;
-                }
-                else if (restartMins > 10)
-                {
-                    timerMins = (uint)restartMins - 10;
-                    msCountdown = 600000;
-                }
-                else
-                {
-                    timerMins = 0;
-                    msCountdown = (uint)restartMins * 60000;
-                }
-                // countdown for the warning messages to start
-                if (hiVisWarnTimer != null) hiVisWarnTimer.Stop();
-                hiVisWarnTimer = new Timer((timerMins * 60000) + 1);
-                hiVisWarnTimer.AutoReset = false;
-                hiVisWarnTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
-                {
-                    // repeating countdown for each warning message
-                    if (hiVisWarnMsgs != null) hiVisWarnMsgs.Stop();
-                    hiVisWarnMsgs = new Timer(1000);
-                    hiVisWarnMsgs.AutoReset = true;
-                    hiVisWarnMsgs.Elapsed += (object sender, ElapsedEventArgs e) =>
-                    {
-                        msCountdown -= 1000;
-                        if ((msCountdown > 60500 && msCountdown % 60000 < 1000) || (msCountdown < 60500 && msCountdown > 10500))
-                        {
-                            Execute(String.Format("title @a actionbar " + vzConfig.VZStrings.RestartMinWarn, (int)Math.Ceiling((decimal)msCountdown / 60000m)));
-                        }
-                        else if (msCountdown < 10500)
-                        {
-                            if (vzConfig.VZStrings.RestartSecSubtl != "")
-                                Execute(String.Format("title @a actionbar " + vzConfig.VZStrings.RestartSecSubtl, (int)Math.Ceiling((decimal)msCountdown / 1000m)));
-                            if (vzConfig.VZStrings.RestartSecTitle != "")
-                                Execute(String.Format("title @a title " + vzConfig.VZStrings.RestartSecTitle, (int)Math.Ceiling((decimal)msCountdown / 1000m)));
-                        }
-                    };
-                    hiVisWarnMsgs.Start();
-                };
-                hiVisWarnTimer.Start();
-            }
-            else
-            {
-                // normal warning message up to 5 mins out from restart
-                double countdown = (s > 0) ? s : (restartMins > 5) ? 300 : restartMins * 60;
-                string units = (countdown > 119) ? vzConfig.VZStrings.MinutesWord : vzConfig.VZStrings.SecondsWord;
-                countdown = (units == vzConfig.VZStrings.SecondsWord) ? countdown : countdown / 60;
-                double timerTime = (restartMins > 5) ? restartMins - 5 : 0;
-
-                if (normalWarnMsg != null) normalWarnMsg.Stop();
-                normalWarnMsg = new Timer((timerTime * 60000) + 1);
-                normalWarnMsg.AutoReset = false;
-                normalWarnMsg.Elapsed += (object sender, ElapsedEventArgs e) =>
-                {
-                    RelayToServer(String.Format(vzConfig.VZStrings.RestartOneWarn, countdown, units));
-                };
-                normalWarnMsg.Start();
-            }
-        }
 
         internal void Log(string line)
         {
@@ -650,17 +497,9 @@ namespace VellumZero
         public string ServerUpMsg;
         public string ServerDownMsg;
         public string MsgFromDiscord;
-        public string RestartOneWarn;
-        public string RestartMinWarn;
-        public string RestartSecTitle;
-        public string RestartSecSubtl;
-        public string RestartAbort;
-        public string MinutesWord;
-        public string SecondsWord;
         public string CrashMsg;
         public string GiveUpMsg;
         public string RecoverMsg;
-        public string RestartMsg;
     }
 
     public class MessageEventArgs : EventArgs

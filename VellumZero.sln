@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VellumZero", "VellumZero.cs
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "vellum", "..\vellum-for-EZ\src\vellum.csproj", "{7C56A0B7-4437-4E58-955C-AC85410A2871}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoRestart", "..\AutoRestart\AutoRestart.csproj", "{773E0E7A-1417-41AF-B065-15692620CC96}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{7C56A0B7-4437-4E58-955C-AC85410A2871}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7C56A0B7-4437-4E58-955C-AC85410A2871}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7C56A0B7-4437-4E58-955C-AC85410A2871}.Release|Any CPU.Build.0 = Release|Any CPU
+		{773E0E7A-1417-41AF-B065-15692620CC96}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{773E0E7A-1417-41AF-B065-15692620CC96}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{773E0E7A-1417-41AF-B065-15692620CC96}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{773E0E7A-1417-41AF-B065-15692620CC96}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
