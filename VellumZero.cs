@@ -11,8 +11,6 @@ using Vellum.Automation;
 using System.Text.RegularExpressions;
 using System.Timers;
 using System.Linq;
-using Microsoft.VisualBasic;
-using System.Reflection;
 
 namespace VellumZero
 {
@@ -39,9 +37,8 @@ namespace VellumZero
         private Timer normalWarnMsg;
         private Timer rollCallTimer;
         private uint msCountdown;
+        private bool crashing = false;
         //private bool alreadyStopping = false;
-        private DateTime lastBackup;
-        private DateTime lastRender;
 
         #region PLUGIN
         internal IHost Host;
@@ -70,7 +67,7 @@ namespace VellumZero
             {
                 PlayerConnMessages = true,
                 ServerStatusMessages = true,
-                AutoRestartMins = 1440,
+                AutoRestartTime = "12:00p",
                 HiVisShutdown = false,
                 IgnorePatterns = new String[] { },
                 DiscordSync = new DiscordSyncConfig()
@@ -97,7 +94,6 @@ namespace VellumZero
                 {
                     LogInit = "Initialized",
                     LogDiscInit = "Starting Discord",
-                    LogDiscLib = "Discord Libraries Loaded",
                     LogDiscConn = "Discord Connected",
                     LogDiscDC = "Discord Disconnected",
                     LogBusConn = "Bus Connected",
@@ -114,7 +110,11 @@ namespace VellumZero
                     RestartSecSubtl = "§c§lseconds until restart",
                     RestartAbort = "An important process is still running, can't restart. Trying again in 30 minutes",
                     MinutesWord = "minutes",
-                    SecondsWord = "seconds"
+                    SecondsWord = "seconds",
+                    CrashMsg = "§c{0} crashed, attempting to revive it",
+                    GiveUpMsg = "§cGiving up trying to revive {0}",
+                    RecoverMsg = "§a{0} has recovered from its crash",
+                    RestartMsg = "§6{0} is going down for a scheduled restart"
                 }
             };
         }
@@ -125,9 +125,9 @@ namespace VellumZero
 
             // Load the plugin configuration from the hosts run-config
             vzConfig = host.LoadPluginConfiguration<VZConfig>(this.GetType());
-            if(vzConfig.AutoRestartMins > 0 && vzConfig.ServerSync.EnableServerSync)
+            if(vzConfig.AutoRestartTime != "" && vzConfig.ServerSync.EnableServerSync)
             {
-                vzConfig.AutoRestartMins = 0;
+                vzConfig.AutoRestartTime = "";
                 Log("WARNING: Auto restart doesn't play well with the bus yet.  Since the bus is enabled, auto restart has been disabled");
             }
 
@@ -182,7 +182,7 @@ namespace VellumZero
                 // add console ignore patterns
                 foreach (string s in vzConfig.IgnorePatterns)
                 {
-                    bds.AddIgnorePattern(s);
+                    if (s != null) bds.AddIgnorePattern(s);
                 }
                 busEventsMade = true;
             }
@@ -190,14 +190,8 @@ namespace VellumZero
 
             if (vzConfig.ServerSync.EnableServerSync || vzConfig.DiscordSync.EnableDiscordSync)
             {
-                // load the embedded resources for discord connectivity
                 if (vzConfig.DiscordSync.EnableDiscordSync && _discord == null)
                 {
-                    if (!discLibrariesLoaded)
-                    {
-                        discLibrariesLoaded = true;
-                        Log(vzConfig.VZStrings.LogDiscLib);
-                    }
                     _discord = new DiscordBot(this);
                 }
 
@@ -209,58 +203,40 @@ namespace VellumZero
                         // broadcast the server online message                        
                         if (_discord != null && vzConfig.ServerStatusMessages) _discord.SendMessage(String.Format(vzConfig.VZStrings.ServerUpMsg, _worldName)).GetAwaiter().GetResult();
 
-                        // start tracking backup and render times
-                        if (lastBackup == null) lastBackup = DateTime.Now;
-                        if (lastRender == null) lastRender = DateTime.Now;
-
-                        if (!serverEventsMade) // have to check again
-                        {
-
-                            if (backupManager != null)
-                            {
-                                backupManager.RegisterHook((byte)BackupManager.Hook.BEGIN, (object sender, EventArgs e) =>
-                                {
-                                    backupManager.RegisterHook((byte)BackupManager.Hook.BEGIN, (object sender, EventArgs e) =>
-                                    {
-                                        lastBackup = DateTime.Now;
-                                    });
-                                });
-                            }
-                            IPlugin _rm = Host.GetPluginByName("RenderManager");
-                            if (_rm != null)
-                            if (renderManager != null)
-                            {
-                                renderManager.RegisterHook((byte)RenderManager.Hook.BEGIN, (object sender, EventArgs e) =>
-                                {
-                                    renderManager.RegisterHook((byte)RenderManager.Hook.BEGIN, (object sender, EventArgs e) =>
-                                    {
-                                        lastRender = DateTime.Now;
-                                    });
-                                });
-                            }
-                        }
                         // set up automatic restart timer
-                        if (vzConfig.AutoRestartMins > 0)
+                        if (vzConfig.AutoRestartTime != "")
                         {
-                            // move auto restart to prevent overlap with backups and renders
-                            int offset = 0;
-                            int tries = 0;
-                            while ((tries < 10) &&
-                                (Math.Abs(Host.RunConfig.Backups.BackupInterval - DateTime.Now.Subtract(lastBackup).Minutes - (vzConfig.AutoRestartMins + offset)) < 30) &&
-                                (Math.Abs(Host.RunConfig.Renders.RenderInterval - DateTime.Now.Subtract(lastRender).Minutes - (vzConfig.AutoRestartMins + offset)) < 15))
+                            DateTime restartTime = DateTime.Parse(vzConfig.AutoRestartTime);
+                            if (restartTime < DateTime.Now)
                             {
-                                offset += 15;
-                                tries++;
+                                restartTime.AddDays(1);
                             }
+                            double restartMins = restartTime.Subtract(DateTime.Now).TotalMinutes;
 
                             if (autoRestartTimer != null) autoRestartTimer.Stop();
-                            autoRestartTimer = new Timer((vzConfig.AutoRestartMins + offset) * 60000);
+                            autoRestartTimer = new Timer((restartMins) * 60000);
                             autoRestartTimer.AutoReset = false;
                             autoRestartTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
                             {
                                 if (!backupManager.Processing && !renderManager.Processing)
                                 {
-                                    bds.SendInput("stop");
+                                    if (vzConfig.ServerStatusMessages && vzConfig.VZStrings.RestartMsg != "") Broadcast(String.Format(vzConfig.VZStrings.RestartMsg, _worldName));
+                                    bdsWatchdog.RetryLimit = 0;
+                                    bds.Close();
+                                    Log("Rebooting Server, waiting 10 seconds to be safe");
+                                    System.Threading.Thread.Sleep(10000);
+                                    bds.Start();
+                                    bdsWatchdog.RetryLimit = 3;
+
+                                    // set up for next restart
+                                    DateTime restartTime = DateTime.Parse(vzConfig.AutoRestartTime);
+                                    if (restartTime < DateTime.Now)
+                                    {
+                                        restartTime.AddDays(1);
+                                    }
+                                    double restartMins = restartTime.Subtract(DateTime.Now).TotalMinutes;
+                                    autoRestartTimer.Interval = restartMins * 60000;
+                                    autoRestartTimer.Start();
                                 }
                                 else  
                                 {   
@@ -280,24 +256,35 @@ namespace VellumZero
 
                     bds.Process.Exited += (object sender, EventArgs e) =>
                     {
-                        // update servers' scoreboards
-                        if (_bus != null)
+                        System.Threading.Thread.Sleep(1000); // give the watchdog a second to run the crashing hook if it's crashing
+                        if (!crashing)
                         {
-                            foreach (string server in vzConfig.ServerSync.OtherServers)
+                            // update servers' scoreboards
+                            if (_bus != null)
                             {
-                                _bus.ExecuteCommand(server, $"scoreboard players reset \"{_worldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\"");
+                                foreach (string server in vzConfig.ServerSync.OtherServers)
+                                {
+                                    _bus.ExecuteCommand(server, $"scoreboard players reset \"{_worldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\"");
+                                }
                             }
-                        }
 
-                        // send server disconnect message
-                        if (vzConfig.ServerStatusMessages)
-                        {
-                            string message = String.Format(vzConfig.VZStrings.ServerDownMsg, _worldName);
-                            if (_discord != null) _discord.SendMessage(message).GetAwaiter().GetResult();
-                            if (_bus != null) _bus.Broadcast(message);
-                        }
-                        StopTimers();
+                            // send server disconnect message
+                            if (vzConfig.ServerStatusMessages) Broadcast(String.Format(vzConfig.VZStrings.ServerDownMsg, _worldName));
+                            Unload();
+                        }                        
                     };
+                    ((IPlugin)bdsWatchdog).RegisterHook((byte)Watchdog.Hook.CRASH, (object sender, EventArgs e) => {
+                        crashing = true;
+                        if(vzConfig.ServerStatusMessages && vzConfig.VZStrings.CrashMsg != "") Broadcast(String.Format(vzConfig.VZStrings.CrashMsg, _worldName));
+                    });
+                    ((IPlugin)bdsWatchdog).RegisterHook((byte)Watchdog.Hook.LIMIT_REACHED, (object sender, EventArgs e) => {
+                        if (crashing && vzConfig.ServerStatusMessages && vzConfig.VZStrings.GiveUpMsg != "") Broadcast(String.Format(vzConfig.VZStrings.GiveUpMsg, _worldName));
+                        Unload();
+                    });
+                    ((IPlugin)bdsWatchdog).RegisterHook((byte)Watchdog.Hook.STABLE, (object sender, EventArgs e) => {
+                        crashing = false;
+                        if (vzConfig.ServerStatusMessages && vzConfig.VZStrings.RecoverMsg != "") Broadcast(String.Format(vzConfig.VZStrings.RecoverMsg, _worldName));
+                    });
 
                     /*
                     bds.OnShutdownScheduled += (object sender, ShutdownScheduledEventArgs e) =>
@@ -312,7 +299,13 @@ namespace VellumZero
                     };
                     */
                     serverEventsMade = true;
+                } else if (serverEventsMade && _bus == null && (sawChatAPIstring || sawCmdAPIstring))
+                {
+                    _bus = new EZBus(this);
+                    _bus.chatSupportLoaded = sawChatAPIstring;
+                    _bus.commandSupportLoaded = sawCmdAPIstring;
                 }
+
 
                 if (!chatEventMade)
                 {
@@ -381,7 +374,7 @@ namespace VellumZero
             if (vzConfig.ServerSync.EnableServerSync)
             {
                 // double check player lists and servers every 5 minutes
-                rollCallTimer = new Timer(300000);
+                rollCallTimer = new System.Timers.Timer(300000);
                 rollCallTimer.AutoReset = true;
                 rollCallTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
                 {
@@ -390,28 +383,14 @@ namespace VellumZero
             }
         }
 
-        public void Reload()
-        {
-            Unload();
-            _discord = null;
-            _bus = null;
-            Initialize(Host);
-            if (vzConfig.ServerSync.EnableServerSync && (sawChatAPIstring || sawCmdAPIstring))
-            {
-                _bus = new EZBus(this);
-                _bus.chatSupportLoaded = sawChatAPIstring;
-                _bus.commandSupportLoaded = sawCmdAPIstring;
-            }
-        }
-
         public void Unload()
         {
-            Log(vzConfig.VZStrings.LogEnd);
-
             // gracefully disconnect from discord
             if (_discord != null) _discord.ShutDown().GetAwaiter().GetResult();
-
             StopTimers();
+            _discord = null;
+            _bus = null;
+            Log(vzConfig.VZStrings.LogEnd);            
         }
 
         public Dictionary<byte, string> GetHooks()
@@ -542,6 +521,13 @@ namespace VellumZero
 
         private void StartNotifyTimers(uint s = 0)
         {
+            DateTime restartTime = DateTime.Parse(vzConfig.AutoRestartTime);
+            if (restartTime < DateTime.Now)
+            {
+                restartTime.AddDays(1);
+            }
+            double restartMins = restartTime.Subtract(DateTime.Now).TotalMinutes;
+
             // high visibility shutdown timers
             if (vzConfig.HiVisShutdown)
             {
@@ -551,15 +537,15 @@ namespace VellumZero
                     timerMins = (s > 600) ? (s - 600) / 60 : 0;
                     msCountdown = (s > 600) ? 600000 : s * 1000;
                 }
-                else if (vzConfig.AutoRestartMins > 10)
+                else if (restartMins > 10)
                 {
-                    timerMins = vzConfig.AutoRestartMins - 10;
+                    timerMins = (uint)restartMins - 10;
                     msCountdown = 600000;
                 }
                 else
                 {
                     timerMins = 0;
-                    msCountdown = vzConfig.AutoRestartMins * 60000;
+                    msCountdown = (uint)restartMins * 60000;
                 }
                 // countdown for the warning messages to start
                 if (hiVisWarnTimer != null) hiVisWarnTimer.Stop();
@@ -593,10 +579,10 @@ namespace VellumZero
             else
             {
                 // normal warning message up to 5 mins out from restart
-                uint countdown = (s > 0) ? s : (vzConfig.AutoRestartMins > 5) ? 300 : vzConfig.AutoRestartMins * 60;
+                double countdown = (s > 0) ? s : (restartMins > 5) ? 300 : restartMins * 60;
                 string units = (countdown > 119) ? vzConfig.VZStrings.MinutesWord : vzConfig.VZStrings.SecondsWord;
                 countdown = (units == vzConfig.VZStrings.SecondsWord) ? countdown : countdown / 60;
-                uint timerTime = (vzConfig.AutoRestartMins > 5) ? vzConfig.AutoRestartMins - 5 : 0;
+                double timerTime = (restartMins > 5) ? restartMins - 5 : 0;
 
                 if (normalWarnMsg != null) normalWarnMsg.Stop();
                 normalWarnMsg = new Timer((timerTime * 60000) + 1);
@@ -620,7 +606,7 @@ namespace VellumZero
     {
         public bool PlayerConnMessages;
         public bool ServerStatusMessages;
-        public uint AutoRestartMins;
+        public string AutoRestartTime;
         public bool HiVisShutdown;
         public string[] IgnorePatterns;
         public ServerSyncConfig ServerSync;
@@ -653,8 +639,7 @@ namespace VellumZero
     public struct VZTextConfig
     {
         public string LogInit;
-        public string LogDiscInit;
-        public string LogDiscLib;
+        public string LogDiscInit; 
         public string LogDiscConn;
         public string LogDiscDC;
         public string LogBusConn;
@@ -672,6 +657,10 @@ namespace VellumZero
         public string RestartAbort;
         public string MinutesWord;
         public string SecondsWord;
+        public string CrashMsg;
+        public string GiveUpMsg;
+        public string RecoverMsg;
+        public string RestartMsg;
     }
 
     public class MessageEventArgs : EventArgs

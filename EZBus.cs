@@ -6,6 +6,7 @@
 using System;
 using System.Net.Http;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace VellumZero
 {
@@ -73,7 +74,8 @@ namespace VellumZero
 
             try
             {
-                string result = httpClient.PostAsync(String.Format(address, localAddress, destination), content).Result.Content.ReadAsStringAsync().Result;                
+                string result = httpClient.PostAsync(String.Format(address, localAddress, destination), content).Result.Content.ReadAsStringAsync().Result;
+                Thread.Sleep(200);
             }
             catch (Exception e)
             {
@@ -97,6 +99,7 @@ namespace VellumZero
             try
             {
                 result = httpClient.PostAsync(String.Format(address, localAddress, destination), content).Result.Content.ReadAsStringAsync().Result;
+                Thread.Sleep(200);
             }
             catch (Exception e)
             {
@@ -122,6 +125,7 @@ namespace VellumZero
             try
             {
                 result = httpClient.PostAsync(String.Format(address, localAddress, destination), content).Result.Content.ReadAsStringAsync().Result;
+                Thread.Sleep(200);
             }
             catch (Exception e)
             {
