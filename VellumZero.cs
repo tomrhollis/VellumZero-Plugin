@@ -32,6 +32,7 @@ namespace VellumZero
         private bool sawCmdAPIstring;
         private Timer rollCallTimer;
         private bool crashing = false;
+        private bool restartEventMade = false;
 
         #region PLUGIN
         internal IHost Host;
@@ -49,8 +50,8 @@ namespace VellumZero
         }
 
         ProcessManager bds;
-        BackupManager backupManager;
-        RenderManager renderManager;
+        //BackupManager backupManager;
+        //RenderManager renderManager;
         Watchdog bdsWatchdog;
         IPlugin autoRestart;
 
@@ -117,8 +118,8 @@ namespace VellumZero
 
 
             bds = (ProcessManager)host.GetPluginByName("ProcessManager");
-            backupManager = (BackupManager)host.GetPluginByName("BackupManager");
-            renderManager = (RenderManager)host.GetPluginByName("RenderManager");
+            //backupManager = (BackupManager)host.GetPluginByName("BackupManager");
+            //renderManager = (RenderManager)host.GetPluginByName("RenderManager");
             bdsWatchdog = (Watchdog)host.GetPluginByName("Watchdog");
             autoRestart = host.GetPluginByName("AutoRestart");
 
@@ -157,6 +158,14 @@ namespace VellumZero
                 });
 
                 busEventsMade = true;
+            }
+
+            if (autoRestart != null && !restartEventMade)
+            {
+                autoRestart.RegisterHook((byte)1, (object sender, EventArgs e) =>
+                {
+                    Initialize(Host);
+                });
             }
 
             if (vzConfig.DiscordSync.EnableDiscordSync)
