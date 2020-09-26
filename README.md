@@ -30,17 +30,17 @@ Be aware that since ElementZero is only available for the Windows version of Bed
 - Run vellum as normal, and the plugin will be loaded
 
 ## Common Issues / Troubleshooting
-**Problem:** The server will freeze randomly until I hit enter, then minutes or hours of stuff it hadn't been doing all happens at once
-**Solution** The command line entered QuickEdit mode, which is a very unhelpful feature in this case. To turn this off completely:
+**Problem:** The server will freeze randomly until I hit enter, then minutes or hours of stuff it hadn't been doing all happens at once<br/>
+**Solution:** The command line entered QuickEdit mode, which is a very unhelpful feature in this case. To turn this off completely:
 - Right click the icon in the top left corner of any terminal window
 - Select Defaults
 - On the Options tab, Uncheck QuickEdit mode
 - Close all terminal windows and start fresh
 
-**Problem:** Strange characters appear in game or in Discord, especially when there should be color codes in the message.
+**Problem:** Strange characters appear in game or in Discord, especially when there should be color codes in the message.<br/>
 **Solution:** Windows terminals often don't use the modern standard of character encoding by default. To fix this, copy vellumzero.bat from the package zip file and use that to start the server.  It will switch the terminal to UTF-8 encoding and then run vellum as normal.  (Or add `chcp 65001` to your server script if you already have one)
 
-**Problem:** NullReferenceException crash on startup
+**Problem:** NullReferenceException crash on startup<br/>
 **Solution:** Something in configuration.json is probably not formatted properly.  Try backing it up, deleting it, and running vellum to generate a new configuration.json.  Copy your settings back in, being careful to use the same format as the defaults.
 
 ## Sample Configuration
