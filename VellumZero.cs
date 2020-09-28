@@ -164,25 +164,12 @@ namespace VellumZero
             {
                 autoRestart.RegisterHook((byte)1, (object sender, EventArgs e) =>
                 {
-                    Initialize(Host);
+                    RepeatableSetup();
                 });
+                restartEventMade = true;
             }
 
-            if (vzConfig.DiscordSync.EnableDiscordSync)
-            {
-                _discord = new DiscordBot(this);
-            }
-
-            if (vzConfig.ServerSync.EnableServerSync)
-            {
-                // double check player lists and servers every 5 minutes
-                rollCallTimer = new System.Timers.Timer(300000);
-                rollCallTimer.AutoReset = true;
-                rollCallTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
-                {
-                    RefreshBusServerInfo();
-                };
-            }
+            RepeatableSetup();
 
             if (vzConfig.ServerSync.EnableServerSync || vzConfig.DiscordSync.EnableDiscordSync)
             {
@@ -207,6 +194,7 @@ namespace VellumZero
                 // set up player join/leave event messages
                 if (!playerEventsMade)
                 {
+                    // when player connects
                     bds.RegisterMatchHandler(Vellum.CommonRegex.PlayerConnected, (object sender, MatchedEventArgs e) =>
                     {
                         Regex r = new Regex(@": (.+),");
@@ -227,6 +215,7 @@ namespace VellumZero
                         }
                     });
 
+                    // when player disconnects
                     bds.RegisterMatchHandler(Vellum.CommonRegex.PlayerDisconnected, (object sender, MatchedEventArgs e) =>
                     {
                         Regex r = new Regex(@": (.+),");
@@ -275,6 +264,7 @@ namespace VellumZero
                             // send server disconnect message
                             if (vzConfig.ServerStatusMessages) Broadcast(String.Format(vzConfig.VZStrings.ServerDownMsg, _worldName));
                             Unload();
+                            Log(vzConfig.VZStrings.LogEnd);
                         }                        
                     };
                     ((IPlugin)bdsWatchdog).RegisterHook((byte)Watchdog.Hook.CRASH, (object sender, EventArgs e) => {
@@ -282,8 +272,12 @@ namespace VellumZero
                         if(vzConfig.ServerStatusMessages && vzConfig.VZStrings.CrashMsg != "") Broadcast(String.Format(vzConfig.VZStrings.CrashMsg, _worldName));
                     });
                     ((IPlugin)bdsWatchdog).RegisterHook((byte)Watchdog.Hook.LIMIT_REACHED, (object sender, EventArgs e) => {
-                        if (crashing && vzConfig.ServerStatusMessages && vzConfig.VZStrings.GiveUpMsg != "") Broadcast(String.Format(vzConfig.VZStrings.GiveUpMsg, _worldName));
-                        Unload();
+                        if (crashing)
+                        {
+                            if (vzConfig.ServerStatusMessages && vzConfig.VZStrings.GiveUpMsg != "") Broadcast(String.Format(vzConfig.VZStrings.GiveUpMsg, _worldName));
+                            Unload();
+                            Log(vzConfig.VZStrings.LogEnd);
+                        }
                     });
                     ((IPlugin)bdsWatchdog).RegisterHook((byte)Watchdog.Hook.STABLE, (object sender, EventArgs e) => {                        
                         if (crashing && vzConfig.ServerStatusMessages && vzConfig.VZStrings.RecoverMsg != "") Broadcast(String.Format(vzConfig.VZStrings.RecoverMsg, _worldName));
@@ -300,14 +294,29 @@ namespace VellumZero
             Log(vzConfig.VZStrings.LogInit);
         }
 
+        private void RepeatableSetup()
+        {
+            if (vzConfig.DiscordSync.EnableDiscordSync) _discord = new DiscordBot(this);
+
+            if (vzConfig.ServerSync.EnableServerSync)
+            {
+                // double check player lists and servers every 5 minutes
+                rollCallTimer = new System.Timers.Timer(300000);
+                rollCallTimer.AutoReset = true;
+                rollCallTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
+                {
+                    RefreshBusServerInfo();
+                };
+            }
+        }
+
         public void Unload()
         {
             // gracefully disconnect from discord
             if (_discord != null) _discord.ShutDown().GetAwaiter().GetResult();
             StopTimers();
             _discord = null;
-            _bus = null;
-            Log(vzConfig.VZStrings.LogEnd);            
+            _bus = null;                      
         }
 
         public Dictionary<byte, string> GetHooks()

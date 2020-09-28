@@ -23,7 +23,8 @@ namespace VellumZero
         private VellumZero _vz;
 
         public DiscordBot(VellumZero parent)
-        {            
+        {
+            
             _vz = parent;
             dsConfig = parent.vzConfig.DiscordSync;
             _vz.Log(_vz.vzConfig.VZStrings.LogDiscInit);
@@ -37,12 +38,9 @@ namespace VellumZero
         {
             _client = new DiscordSocketClient();
             _client.MessageReceived += ReceiveMessage;
-
             await _client.LoginAsync(TokenType.Bot, dsConfig.DiscordToken);
             await _client.StartAsync();
-
             Channel = (ITextChannel)_client.GetChannel(dsConfig.DiscordChannel);
-
             _vz.Log(_vz.vzConfig.VZStrings.LogDiscConn);
         }
 
@@ -113,8 +111,8 @@ namespace VellumZero
         /// <param name="text">The text to send to discord</param>
         public async Task SendMessage(string text)
         {   
-            try
-            {
+          //  try
+          //  {
                 string message = Regex.Replace(text, @"[§\u00a7][0-9a-gk-or]", ""); // strip minecraft formatting if any
                 message = Regex.Replace(message, @"@everyone", "everyone");
                 message = Regex.Replace(message, @"@here", "here");
@@ -156,10 +154,11 @@ namespace VellumZero
                 }
                 // send
                 await location.SendMessageAsync(message);
-            } catch (NullReferenceException)
-            {
-                _vz.Log("Error sending Discord message -- double check token and channel settings in configuration");
-            }
+        //    } catch (NullReferenceException ex)
+        //    {
+        //        _vz.Log("Error sending Discord message -- double check token and channel settings in configuration");
+        //        Console.WriteLine(ex.StackTrace);
+        //    }
             
         }
     }
