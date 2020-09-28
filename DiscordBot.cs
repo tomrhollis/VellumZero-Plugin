@@ -23,7 +23,8 @@ namespace VellumZero
         private VellumZero _vz;
 
         public DiscordBot(VellumZero parent)
-        {            
+        {
+            
             _vz = parent;
             dsConfig = parent.vzConfig.DiscordSync;
             _vz.Log(_vz.vzConfig.VZStrings.LogDiscInit);
@@ -37,12 +38,9 @@ namespace VellumZero
         {
             _client = new DiscordSocketClient();
             _client.MessageReceived += ReceiveMessage;
-
             await _client.LoginAsync(TokenType.Bot, dsConfig.DiscordToken);
             await _client.StartAsync();
-
             Channel = (ITextChannel)_client.GetChannel(dsConfig.DiscordChannel);
-
             _vz.Log(_vz.vzConfig.VZStrings.LogDiscConn);
         }
 
@@ -71,7 +69,7 @@ namespace VellumZero
             var message = arg as SocketUserMessage;
             string msgText = message.Content;
             
-            if (message.Author.IsBot || message.Channel.Id != dsConfig.DiscordChannel) return;
+            if (message.Channel.Id != dsConfig.DiscordChannel || message.Author.Id == _client.CurrentUser.Id) return;
 
             // find user and channel mention codes
             MatchCollection userMatches = userRegex.Matches(msgText);
@@ -112,48 +110,56 @@ namespace VellumZero
         /// </summary>
         /// <param name="text">The text to send to discord</param>
         public async Task SendMessage(string text)
-        {            
-            string message = Regex.Replace(text, @"[§\u00a7][0-9a-gk-or]", ""); // strip minecraft formatting if any
-            message = Regex.Replace(message, @"@everyone", "everyone");
-            message = Regex.Replace(message, @"@here", "here");
-            var location = _client.GetChannel(dsConfig.DiscordChannel) as SocketTextChannel;
+        {   
+          //  try
+          //  {
+                string message = Regex.Replace(text, @"[§\u00a7][0-9a-gk-or]", ""); // strip minecraft formatting if any
+                message = Regex.Replace(message, @"@everyone", "everyone");
+                message = Regex.Replace(message, @"@here", "here");
+                var location = _client.GetChannel(dsConfig.DiscordChannel) as SocketTextChannel;
 
-            if (dsConfig.DiscordMentions)
-            {
-                // set up to do the find and replace for discord mentions
-                Regex userRegex = new Regex(@"@<([^>]+)>");
-                Regex channelRegex = new Regex(@"#([-a-z]+)", RegexOptions.IgnoreCase);
-                MatchCollection userMatches = userRegex.Matches(message);
-                MatchCollection channelMatches = channelRegex.Matches(message);
-               
-                // replace @<username> with a mention string
-                foreach (Match um in userMatches)
+                if (dsConfig.DiscordMentions)
                 {
-                    var users = location.Guild.Users.Where(user => user.Username.ToLower() == um.Groups[1].Value.ToLower());
-                    string userMention = null;
+                    // set up to do the find and replace for discord mentions
+                    Regex userRegex = new Regex(@"@<([^>]+)>");
+                    Regex channelRegex = new Regex(@"#([-a-z]+)", RegexOptions.IgnoreCase);
+                    MatchCollection userMatches = userRegex.Matches(message);
+                    MatchCollection channelMatches = channelRegex.Matches(message);
 
-                    if (users.Count() > 0)
+                    // replace @<username> with a mention string
+                    foreach (Match um in userMatches)
                     {
-                        userMention = users.First().Mention;
-                        message = Regex.Replace(message, "@<" + um.Groups[1].Value + ">", userMention);
+                        var users = location.Guild.Users.Where(user => user.Username.ToLower() == um.Groups[1].Value.ToLower());
+                        string userMention = null;
+
+                        if (users.Count() > 0)
+                        {
+                            userMention = users.First().Mention;
+                            message = Regex.Replace(message, "@<" + um.Groups[1].Value + ">", userMention);
+                        }
+                    }
+
+                    // replace #channel-name with a mention string
+                    foreach (Match cm in channelMatches)
+                    {
+                        var channels = location.Guild.Channels.Where(channel => channel.Name == cm.Groups[1].Value.ToLower());
+                        ulong? channelId = null;
+
+                        if (channels.Count() > 0)
+                        {
+                            channelId = channels.First().Id;
+                            message = Regex.Replace(message, "#" + cm.Groups[1].Value, "<#" + channelId + ">");
+                        }
                     }
                 }
-
-                // replace #channel-name with a mention string
-                foreach (Match cm in channelMatches)
-                {
-                    var channels = location.Guild.Channels.Where(channel => channel.Name == cm.Groups[1].Value.ToLower());
-                    ulong? channelId = null;
-
-                    if (channels.Count() > 0)
-                    {
-                        channelId = channels.First().Id;
-                        message = Regex.Replace(message, "#" + cm.Groups[1].Value, "<#" + channelId + ">");
-                    }
-                }
-            }
-            // send
-            await location.SendMessageAsync(message);
+                // send
+                await location.SendMessageAsync(message);
+        //    } catch (NullReferenceException ex)
+        //    {
+        //        _vz.Log("Error sending Discord message -- double check token and channel settings in configuration");
+        //        Console.WriteLine(ex.StackTrace);
+        //    }
+            
         }
     }
 }
