@@ -1,3 +1,5 @@
+(Note: not quite ready for a release, but it's almost there. Just a little more testing, not long now)
+
 # VellumZero
 A plugin for Vellum 1.3+ to take advantage of ElementZero capabilities.  What does that mean?
 
