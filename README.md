@@ -111,9 +111,9 @@ DiscordChannel             The number ID of the channel on your server that mess
 DiscordMentions            (true/false) Whether to let people create mentions on discord using
                            @<User Name> (with the <>) -- note, @everyone and @here are disabled no matter what
                            
-LatinOnly                  (true/false) Remove any non-Latin characters before sending a Discord message to Minecraft
-                           This is to defend against trolls using extended Unicode characters, which can
-                           cause lag for some reason
+LatinOnly                  (true/false) Remove any non-Latin characters before sending a Discord message 
+                           to Minecraft. This is to defend against trolls using extended Unicode 
+                           characters, which can cause lag for some reason
                            
 DiscordCharLimit           Trim the size of Discord messages to this amount before sending to Minecraft
                            0 = Unlimited
@@ -132,12 +132,15 @@ BusAddress                The address of the server where the Minibus is running
                           
 BusPort                   The port the Minibus is using                          
 
-DisplayOnlineList         (true/false) Whether to add players from other servers into the online list on this server
+DisplayOnlineList         (true/false) Whether to add players from other servers into 
+                          the online list on this server
 
-OnlineListScoreboard      The name of the scoreboard in game where the names of players on other servers are stored
+OnlineListScoreboard      The name of the scoreboard in game where 
+                          the names of players on other servers are stored
                           THE SCOREBOARD NAME MUST BE THE SAME ON ALL OF YOUR SERVERS TO WORK PROPERLY
 
-ServerListScoreboard      The name of the scoreboard in game storing the names of all online servers on the network
+ServerListScoreboard      The name of the scoreboard in game storing 
+                          the names of all online servers on the network
                           THE SCOREBOARD NAME MUST BE THE SAME ON ALL OF YOUR SERVERS TO WORK PROPERLY
 
 -----------------------------------------------------------------------------------------------------
