@@ -21,7 +21,7 @@ Be aware that since ElementZero is only available for the Windows version of Bed
 - More features to come! Check the issues list for issues with the Enhancements tag
 
 ## Installation
-- Requires the following already set up: Bedrock Dedicated Server, ElementZero, and Vellum. If using Discord then also a Discord bot, if you have multiple servers then also the [**ElementZero Minibus**](https://github.com/codehz/mini_bus_rust)
+- Requires the following already set up: Bedrock Dedicated Server, ElementZero, and [**Vellum**](https://github.com/clarkx86/vellum). If using Discord then also a Discord bot, if you have multiple servers then also the [**ElementZero Minibus**](https://github.com/codehz/mini_bus_rust)
 - It's recommended to install the [**.NET Core Runtime**](https://dotnet.microsoft.com/download/dotnet-core/thank-you/runtime-3.1.8-windows-x64-installer). If you don't install .NET, you must use the larger "bundled" versions of Vellum and VellumZero.
 - Download the latest release on the right
 - In whatever folder your vellum.exe is in, unzip it into a *plugins* subfolder
