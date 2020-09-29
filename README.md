@@ -1,5 +1,3 @@
-(Note: not quite ready for a release, but it's almost there. Just a little more testing, not long now)
-
 # VellumZero
 A plugin for Vellum 1.3+ to take advantage of ElementZero capabilities.  What does that mean?
 
@@ -16,14 +14,15 @@ Be aware that since ElementZero is only available for the Windows version of Bed
 - Connect to a Discord bot to sync chat with a Discord channel
 - Create Discord mentions within Minecraft by using `@<User Name>` -- with the <> included
 - Use ElementZero bus to sync chats between multiple servers
-- Updates scoreboards on your servers with lists of what servers are online and the names of players on your network
-- Option to automatically add players on other servers to the visible online list on all servers
+- Update scoreboards on your servers with lists of what servers are online and the names of players on your network
+- Option to automatically add your other servers' players to the online list on the menu screen
 - Customizable text for any message the plugin sends
-- VellumZero package includes [**any other Vellum plugins I make**](https://github.com/tomrhollis/Vellum-Plugins), such as AutoRestart to restart your server daily
+- Release package includes [**any other Vellum plugin I've made**](https://github.com/tomrhollis/Vellum-Plugins), such as AutoRestart
 - More features to come! Check the issues list for issues with the Enhancements tag
 
 ## Installation
 - Requires the following already set up: Bedrock Dedicated Server, ElementZero, and Vellum. If using Discord then also a Discord bot, if you have multiple servers then also the [**ElementZero Minibus**](https://github.com/codehz/mini_bus_rust)
+- It's recommended to install the [**.NET Core Runtime**](https://dotnet.microsoft.com/download/dotnet-core/thank-you/runtime-3.1.8-windows-x64-installer). If you don't install .NET, you must use the larger "bundled" versions of Vellum and VellumZero.
 - Download the latest release on the right
 - In whatever folder your vellum.exe is in, unzip it into a *plugins* subfolder
 - Copy the sample configuration below into the Plugins section of vellum's configuration.json (or run vellum once and quit, and it will generate the default settings for the plugin in configuration.json)
