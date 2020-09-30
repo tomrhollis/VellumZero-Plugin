@@ -123,7 +123,8 @@ SERVER SYNC SETTINGS
 -----------------------
 EnableServerSync          (true/false) Whether to use any of the features in this section
 
-OtherServers              A list of the world names of all the other servers on your network
+OtherServers              A list of the bus names of all the other servers on your network
+                          Each server's bus name should be the same as their world name for best results
                           [ ] = none
                           ["Survival", "Creative", "Testing Ground", "Etc"] = example of a list
                           
