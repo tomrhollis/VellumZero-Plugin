@@ -23,8 +23,7 @@ Be aware that since ElementZero is only available for the Windows version of Bed
 ## Installation
 - Requires the following already set up: Bedrock Dedicated Server, ElementZero, and [**Vellum**](https://github.com/clarkx86/vellum). If using Discord then also a Discord bot, if you have multiple servers then also the [**ElementZero Minibus**](https://github.com/codehz/mini_bus_rust)
 - It's recommended to install the [**.NET Core Runtime**](https://dotnet.microsoft.com/download/dotnet-core/thank-you/runtime-3.1.8-windows-x64-installer). If you don't install .NET, you must use the larger "bundled" versions of Vellum and VellumZero.
-- Download the latest release on the right
-- In whatever folder your vellum.exe is in, unzip it into a *plugins* subfolder
+- Download the latest release from this repository and unzip it based on the instructions on the release page
 - Copy the sample configuration below into the Plugins section of vellum's configuration.json (or run vellum once and quit, and it will generate the default settings for the plugin in configuration.json)
 - Read the descriptions of the settings below, and make any changes as needed
 - Set your Windows terminal defaults to *Disable QuickEdit Mode* (see the first issue in Common Issues below for detailed instructions)
@@ -131,7 +130,9 @@ OtherServers              A list of the bus names of all the other servers on yo
 BusAddress                The address of the server where the Minibus is running
                           Leave as the default 127.0.0.1 if it's in the same place as this copy of Vellum
                           
-BusPort                   The port the Minibus is using                          
+BusPort                   The port the Minibus is using--not the same as the port in config.yml!
+                          Unless you've changed it from 8234 when compiling the minibus yourself,
+                          this should not be changed.
 
 DisplayOnlineList         (true/false) Whether to add players from other servers into 
                           the online list on this server
