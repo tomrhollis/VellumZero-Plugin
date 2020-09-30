@@ -24,7 +24,7 @@ Be aware that since ElementZero is only available for the Windows version of Bed
 - Requires the following already set up: Bedrock Dedicated Server, ElementZero, and [**Vellum**](https://github.com/clarkx86/vellum). If using Discord then also a Discord bot, if you have multiple servers then also the [**ElementZero Minibus**](https://github.com/codehz/mini_bus_rust)
 - It's recommended to install the [**.NET Core Runtime**](https://dotnet.microsoft.com/download/dotnet-core/thank-you/runtime-3.1.8-windows-x64-installer). If you don't install .NET, you must use the larger "bundled" versions of Vellum and VellumZero.
 - Download the latest release from this repository and unzip it based on the instructions on the release page
-- Copy the sample configuration below into the Plugins section of vellum's configuration.json (or run vellum once and quit, and it will generate the default settings for the plugin in configuration.json)
+- Copy the sample configuration below into the Plugins section of vellum's configuration.json (or run vellum once or twice and quit, and it will generate the default settings for the plugin in configuration.json)
 - Read the descriptions of the settings below, and make any changes as needed
 - Set your Windows terminal defaults to *Disable QuickEdit Mode* (see the first issue in Common Issues below for detailed instructions)
 - Run vellum as normal, and the plugin will be loaded
