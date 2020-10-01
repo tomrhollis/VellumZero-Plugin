@@ -33,6 +33,7 @@ namespace VellumZero
         private Timer rollCallTimer;
         private bool crashing = false;
         private bool restartEventMade = false;
+        private DateTime start = DateTime.Now;
 
         #region PLUGIN
         internal IHost Host;
@@ -50,7 +51,7 @@ namespace VellumZero
         }
 
         ProcessManager bds;
-        //BackupManager backupManager;
+        BackupManager backupManager;
         //RenderManager renderManager;
         Watchdog bdsWatchdog;
         IPlugin autoRestart;
@@ -118,7 +119,7 @@ namespace VellumZero
 
 
             bds = (ProcessManager)host.GetPluginByName("ProcessManager");
-            //backupManager = (BackupManager)host.GetPluginByName("BackupManager");
+            backupManager = (BackupManager)host.GetPluginByName("BackupManager");
             //renderManager = (RenderManager)host.GetPluginByName("RenderManager");
             bdsWatchdog = (Watchdog)host.GetPluginByName("Watchdog");
             autoRestart = host.GetPluginByName("AutoRestart");
@@ -283,6 +284,10 @@ namespace VellumZero
                         if (crashing && vzConfig.ServerStatusMessages && vzConfig.VZStrings.RecoverMsg != "") Broadcast(String.Format(vzConfig.VZStrings.RecoverMsg, _worldName));
                         crashing = false;
                     });
+                    ((IPlugin)backupManager).RegisterHook((byte)BackupManager.Hook.END, (object sender, EventArgs e) =>
+                    {
+                        if(DateTime.Now.Subtract(start).TotalMinutes > 5 && Host.RunConfig.Backups.StopBeforeBackup) RepeatableSetup();
+                    });
                     serverEventsMade = true;
                 } else if (serverEventsMade && _bus == null && (sawChatAPIstring || sawCmdAPIstring))
                 {
@@ -422,7 +427,7 @@ namespace VellumZero
         private void SendTellraw(string message)
         {
             message.Replace("\"", "'");
-            bds.SendInput("/tellraw @a {\"rawtext\":[{\"text\":\"" + message + "\"}]}");
+            bds.SendInput("tellraw @a {\"rawtext\":[{\"text\":\"" + message + "\"}]}");
         }
 
         public void RelayToServer(string message)
