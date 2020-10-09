@@ -7,9 +7,6 @@ A plugin for Vellum 1.3+ to take advantage of ElementZero capabilities.  What do
 
 **VellumZero** ties the two together for more behind the scenes functionality!
 
-## Important Note about Linux
-Be aware that since ElementZero is only available for the Windows version of Bedrock Dedicated Server, this plugin will only work with Vellum on Windows.  Future support is planned for a Docker-Wine container, but for now Linux is not supported in any way.
-
 ## Features
 - Connect to a Discord bot to sync chat with a Discord channel
 - Create Discord mentions within Minecraft by using `@<User Name>` -- with the <> included
@@ -19,17 +16,30 @@ Be aware that since ElementZero is only available for the Windows version of Bed
 - Customizable text for any message the plugin sends
 - Release package includes [**any other Vellum plugin I've made**](https://github.com/tomrhollis/Vellum-Plugins), such as AutoRestart
 - More features to come! Check the issues list for issues with the Enhancements tag
+- **Now works in Linux through Wine -- see the bottom of this document for new Linux instructions**
 
-## Installation
+## Installation (Windows)
 - Requires the following already set up: Bedrock Dedicated Server, ElementZero, and [**Vellum**](https://github.com/clarkx86/vellum). If using Discord then also a Discord bot, if you have multiple servers then also the [**ElementZero Minibus**](https://github.com/codehz/mini_bus_rust)
-- It's recommended to install the [**.NET Core Runtime**](https://dotnet.microsoft.com/download/dotnet-core/thank-you/runtime-3.1.8-windows-x64-installer). If you don't install .NET, you must use the larger "bundled" versions of Vellum and VellumZero.
+- To use this plugin, the [**.NET Core Runtime**](https://dotnet.microsoft.com/download/dotnet-core/thank-you/runtime-3.1.8-windows-x64-installer) is required. Please install that, and use the non-bundled version of Vellum.
+- In ElementZero's custom.yaml, enable the ChatAPI mod if it's not already enabled.
+- **Only if you're using the Minibus**, make sure the Bus mod is enabled in custom.yaml with these settings:
+```
+  Bus:
+    enabled: true
+    name: *the_world_name_here*
+    host: 127.0.0.1
+    port: 4040
+    reconnect-delay: 10
+```
+- Notes on the Bus configuration: `name:` needs to be the same as this server's world name for all the other servers with VellumZero to find it.  Also the `port:` in custom.yaml is DIFFERENT from the port in configuration.json.  It's 4040 in custom.yaml, 8234 in configuration.json.
 - Download the latest release from this repository and unzip it based on the instructions on the release page
-- Copy the sample configuration below into the Plugins section of vellum's configuration.json (or run vellum once or twice and quit, and it will generate the default settings for the plugin in configuration.json)
+- Copy the sample configuration below into the Plugins section of vellum's configuration.json if it's not there already (or run vellum once or twice and it will generate the default settings for the plugin in configuration.json)
 - Read the descriptions of the settings below, and make any changes as needed
 - Set your Windows terminal defaults to *Disable QuickEdit Mode* (see the first issue in Common Issues below for detailed instructions)
 - Run vellum as normal, and the plugin will be loaded
+- If there are strange characters in the text the plugin sends to Minecraft, see the second issue below.
 
-## Common Issues / Troubleshooting
+## Common Issues / Troubleshooting (Mostly Windows)
 **Problem:** The server will freeze randomly until I hit enter, then minutes or hours of stuff it hadn't been doing all happens at once<br/>
 **Solution:** The command line entered QuickEdit mode, which is a very unhelpful feature in this case. To turn this off completely:
 - Right click the icon in the top left corner of any terminal window
@@ -45,7 +55,7 @@ Be aware that since ElementZero is only available for the Windows version of Bed
 
 ## Sample Configuration
 ```
-"VellumZero": {
+    "VellumZero": {
       "Enable": true,
       "Config": {
         "PlayerConnMessages": true,
@@ -76,7 +86,7 @@ Be aware that since ElementZero is only available for the Windows version of Bed
           "MsgFromDiscord": "(§d{0}§r) [§b{1}§r] {2}",
           "CrashMsg": "§c{0} crashed, attempting to revive it",
           "GiveUpMsg": "§cGiving up trying to revive {0}",
-          "RecoverMsg": "§a{0} has recovered from its crash"
+          "RecoverMsg": "§a{0} has recovered from its crash",
           "LogInit": "Initialized",
           "LogDiscInit": "Starting Discord",
           "LogDiscConn": "Discord Connected",
@@ -194,4 +204,51 @@ LogDiscDC                 The console message when the plugin disconnects from D
 LogBusConn                The console message when the plugin detects that ElementZero's bus mod is loaded
 
 LogEnd                    The console message when the plugin is unloaded
+```
+
+## Linux Installation
+Thanks to help from @bennydiamond, there's now instructions for running Vellum and ElementZero together in Wine.  To do so:
+- Install Wine version 5 or greater (search for instructions related to your distro)
+- Follow Microsoft's [**instructions for installing .NET Core 3.1 runtime**](https://docs.microsoft.com/en-us/dotnet/core/install/linux) for your distro
+- Using your package manager, install `expect-dev` or `expect-devel` (whichever it is in your distro)
+- Download and unzip the WINDOWS version of Bedrock Dedicated Server
+- Download and unzip ElementZero into the same directory.
+- Copy vcruntime140_1.dll and vcruntime140.dll from a Windows 10 machine, place in the BDS server directory in Linux
+- Download and unzip the LINUX version of Vellum in the same directory. `chmod +x vellum` if necessary. Run vellum once so it creates configuration.json
+- Edit custom.yaml to enable the ChatAPI mod. If using Minibus, configure that as shown in the Windows section
+- Create a `plugins` subdirectory and unzip any Vellum plugins you're using into there
+- Create a launch script like this in your server directory:
+```
+#!/bin/bash
+export WINEDLLOVERRIDES="vcruntime140_1,vcruntime140=n;mscoree,mshtml,explorer.exe,winemenubuilder.exe,services.exe,playplug.exe=d"
+export WINEDEBUG=-all
+unbuffer -p wine64 bedrock_server_mod.exe
+```
+- `chmod +x ./thescriptyoujustmade.sh`
+- Open configuration.json and set `BdsBinPath: "thescriptyoujustmade.sh"`. Save and exit
+- Run Vellum once to check that it starts.  Once the server is done loading, type `stop` to close the server. Vellum will now write all the plugin options to configuration.json
+- Open configuration.json again and set everything up the way you like it
+- That should be it, run vellum to start the server.
+
+Vellum may be able to launch the official EZ docker container in a similar way, but I've had mixed results with that so far.  Nothing I'm confident enough in to put here yet.  I will come back to looking into docker at a later time.  If you figure it out before me, please let me know so I can update this section!
+
+Minecraft formatting will probably not work properly using the instructions above due to an encoding problem somewhere in the Russian nesting dolls of programs that are running to make this work. Until I figure out a workaround, you'll probably have to use this for the VZStrings section of configuration.json instead:
+```
+        "VZStrings": {
+          "ChatMsg": "({0}) <{1}> {2}",
+          "PlayerJoinMsg": "({0}) {1} Connected",
+          "PlayerLeaveMsg": "({0}) {1} Left",
+          "ServerUpMsg": "({0}): Online",
+          "ServerDownMsg": "({0}): Offline",
+          "MsgFromDiscord": "({0}) [{1}] {2}",
+          "CrashMsg": "{0} crashed, attempting to revive it",
+          "GiveUpMsg": "Giving up trying to revive {0}",
+          "RecoverMsg": "{0} has recovered from its crash"
+          "LogInit": "Initialized",
+          "LogDiscInit": "Starting Discord",
+          "LogDiscConn": "Discord Connected",
+          "LogDiscDC": "Discord Disconnected",
+          "LogBusConn": "Bus Connected",
+          "LogEnd": "Unloading plugin",
+        }
 ```

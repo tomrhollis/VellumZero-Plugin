@@ -443,8 +443,8 @@ namespace VellumZero
         /// <param name="command">the command to run</param>
         public void Execute(string command)
         {
-            if (_bus != null && _bus.commandSupportLoaded) _bus.ExecuteCommand(_worldName, command); // make sure all console commands work this way
-            else bds.SendInput(command); // this needs extra testing for character/encoding issues and if all in-game commands work this way
+            if (_bus != null && _bus.commandSupportLoaded) _bus.ExecuteCommand(_worldName, command); 
+            else bds.SendInput(command); 
         }
 
 
