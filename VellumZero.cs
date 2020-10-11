@@ -11,6 +11,7 @@ using Vellum.Automation;
 using System.Text.RegularExpressions;
 using System.Timers;
 using System.Linq;
+using System.Data.SQLite;
 
 namespace VellumZero
 {
@@ -33,6 +34,7 @@ namespace VellumZero
         private Timer rollCallTimer;
         private bool crashing = false;
         private bool restartEventMade = false;
+        private DateTime start = DateTime.Now;
 
         #region PLUGIN
         internal IHost Host;
@@ -50,7 +52,7 @@ namespace VellumZero
         }
 
         ProcessManager bds;
-        //BackupManager backupManager;
+        BackupManager backupManager;
         //RenderManager renderManager;
         Watchdog bdsWatchdog;
         IPlugin autoRestart;
@@ -62,6 +64,8 @@ namespace VellumZero
             {
                 PlayerConnMessages = true,
                 ServerStatusMessages = true,
+                UserDB = "./user.db",
+                EssentialsDB = "./essentials.db",
                 DiscordSync = new DiscordSyncConfig()
                 {
                     EnableDiscordSync = false,
@@ -89,9 +93,9 @@ namespace VellumZero
                     LogDiscDC = "Discord Disconnected",
                     LogBusConn = "Bus Detected",
                     LogEnd = "Plugin Unloaded",
-                    ChatMsg = "(§6{0}§r) <{1}> {2}",
-                    PlayerJoinMsg = "(§6{0}§r) {1} Connected",
-                    PlayerLeaveMsg = "(§6{0}§r) {1} Left",
+                    ChatMsg = "(§6{0}§r) <{3}{1}{4}> {2}",
+                    PlayerJoinMsg = "(§6{0}§r) {3}{1}{4} Connected",
+                    PlayerLeaveMsg = "(§6{0}§r) {3}{1}{4} Left",
                     ServerUpMsg = "(§6{0}§r): §aOnline§r",
                     ServerDownMsg = "(§6{0}§r): §cOffline§r",
                     MsgFromDiscord = "(§d{0}§r) [§b{1}§r] {2}",
@@ -118,7 +122,7 @@ namespace VellumZero
 
 
             bds = (ProcessManager)host.GetPluginByName("ProcessManager");
-            //backupManager = (BackupManager)host.GetPluginByName("BackupManager");
+            backupManager = (BackupManager)host.GetPluginByName("BackupManager");
             //renderManager = (RenderManager)host.GetPluginByName("RenderManager");
             bdsWatchdog = (Watchdog)host.GetPluginByName("Watchdog");
             autoRestart = host.GetPluginByName("AutoRestart");
@@ -283,6 +287,10 @@ namespace VellumZero
                         if (crashing && vzConfig.ServerStatusMessages && vzConfig.VZStrings.RecoverMsg != "") Broadcast(String.Format(vzConfig.VZStrings.RecoverMsg, _worldName));
                         crashing = false;
                     });
+                    ((IPlugin)backupManager).RegisterHook((byte)BackupManager.Hook.END, (object sender, EventArgs e) =>
+                    {
+                        if(DateTime.Now.Subtract(start).TotalMinutes > 5 && Host.RunConfig.Backups.StopBeforeBackup) RepeatableSetup();
+                    });
                     serverEventsMade = true;
                 } else if (serverEventsMade && _bus == null && (sawChatAPIstring || sawCmdAPIstring))
                 {
@@ -384,28 +392,87 @@ namespace VellumZero
             }
         }
 
+        /// <summary>
+        /// Get EZ prefix and postfix for a specific user
+        /// </summary>
+        /// <param name="name">The username</param>
+        /// <returns>string array with the prefix and postfix</returns>
+        private string[] GetAffixes(string name)
+        {
+            string uuid = "", prefix = "", postfix = "";
+            try
+            {
+                using (var conn = new SQLiteConnection(@"Data Source=" + vzConfig.UserDB + ";Version=3;"))
+                {
+                    conn.Open();
+                    using (var cmd = new SQLiteCommand($"SELECT hex(uuid) FROM user WHERE name='{name}'", conn))
+                    {
+                        using (SQLiteDataReader rdr = cmd.ExecuteReader())
+                        {
+                            if (rdr.Read()) uuid = rdr.GetString(0);
+                            if (rdr.Read())
+                            {
+                                Log("Error: Database lookup returned more than one user for a username");
+                                return null;
+                            }
+                        }
+                    }
+                    conn.Close();
+                }
+                using (var conn = new SQLiteConnection(@"Data Source=" + vzConfig.EssentialsDB + ";Version=3;"))
+                {
+                    conn.Open();
+                    using (var cmd = new SQLiteCommand($"SELECT prefix,postfix FROM custom_name WHERE uuid = x'{uuid}'", conn))
+                    {
+                        using (SQLiteDataReader rdr = cmd.ExecuteReader())
+                        {
+                            if (rdr.Read())
+                            {
+                                prefix = rdr.GetString(0);
+                                postfix = rdr.GetString(1);
+                            }
+                            if (rdr.Read())
+                            {
+                                Log("Error: Database lookup returned more than one user for a UUID");
+                                return null;
+                            }
+                        }
+                    }
+                    conn.Close();
+                }
+            } catch (SQLiteException)
+            {
+                Log("Error accessing user information in a SQLite database");
+            }
+
+            return new string[] { prefix, postfix };
+        }
+
         private void HandleChat(string user, string chat)
         {
             MessageEventArgs a = new MessageEventArgs(_worldName, user, chat);
             CallHook(Hook.LOC_PLAYER_CHAT, a);
-
-            Broadcast(String.Format(vzConfig.VZStrings.ChatMsg, a.Server, a.User, a.Text));
+            string[] affixes = GetAffixes(user);
+            if (affixes == null) affixes = new string[] { "", "" };
+            Broadcast(String.Format(vzConfig.VZStrings.ChatMsg, a.Server, a.User, a.Text, affixes[0], affixes[1]));
         }
 
         private void JoinMessage(string user)
         {
             MessageEventArgs a = new MessageEventArgs(_worldName, user, "");
             CallHook(Hook.LOC_PLAYER_CONN, a);
-
-            Broadcast(String.Format(vzConfig.VZStrings.PlayerJoinMsg, a.Server, a.User));
+            string[] affixes = GetAffixes(user);
+            if (affixes == null) affixes = new string[] { "", "" };
+            Broadcast(String.Format(vzConfig.VZStrings.PlayerJoinMsg, a.Server, a.User, affixes[0], affixes[1]));
         }
 
         private void LeaveMessage(string user)
         {
             MessageEventArgs a = new MessageEventArgs(_worldName, user, "");
             CallHook(Hook.LOC_PLAYER_DC, a);
-
-            Broadcast(String.Format(vzConfig.VZStrings.PlayerLeaveMsg, a.Server, a.User));
+            string[] affixes = GetAffixes(user);
+            if (affixes == null) affixes = new string[] { "", "" };
+            Broadcast(String.Format(vzConfig.VZStrings.PlayerLeaveMsg, a.Server, a.User, affixes[0], affixes[1]));
         }
 
         private void StopTimers()
@@ -422,7 +489,7 @@ namespace VellumZero
         private void SendTellraw(string message)
         {
             message.Replace("\"", "'");
-            bds.SendInput("/tellraw @a {\"rawtext\":[{\"text\":\"" + message + "\"}]}");
+            bds.SendInput("tellraw @a {\"rawtext\":[{\"text\":\"" + message + "\"}]}");
         }
 
         public void RelayToServer(string message)
@@ -438,8 +505,8 @@ namespace VellumZero
         /// <param name="command">the command to run</param>
         public void Execute(string command)
         {
-            if (_bus != null && _bus.commandSupportLoaded) _bus.ExecuteCommand(_worldName, command); // make sure all console commands work this way
-            else bds.SendInput(command); // this needs extra testing for character/encoding issues and if all in-game commands work this way
+            if (_bus != null && _bus.commandSupportLoaded) _bus.ExecuteCommand(_worldName, command); 
+            else bds.SendInput(command); 
         }
 
 
@@ -454,6 +521,8 @@ namespace VellumZero
     {
         public bool PlayerConnMessages;
         public bool ServerStatusMessages;
+        public string UserDB;
+        public string EssentialsDB;
         public ServerSyncConfig ServerSync;
         public DiscordSyncConfig DiscordSync;
         public VZTextConfig VZStrings;
