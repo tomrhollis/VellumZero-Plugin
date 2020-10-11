@@ -78,9 +78,9 @@ A plugin for Vellum 1.3+ to take advantage of ElementZero capabilities.  What do
           "ServerListScoreboard": "Servers"
         },
         "VZStrings": {
-          "ChatMsg": "(§6{0}§r) <{1}> {2}",
-          "PlayerJoinMsg": "(§6{0}§r) {1} Connected",
-          "PlayerLeaveMsg": "(§6{0}§r) {1} Left",
+          "ChatMsg": "(§6{0}§r) <{3}{1}{4}> {2}",
+          "PlayerJoinMsg": "(§6{0}§r) {2}{1}{3} Connected",
+          "PlayerLeaveMsg": "(§6{0}§r) {2}{1}{3} Left",
           "ServerUpMsg": "(§6{0}§r): §aOnline§r",
           "ServerDownMsg": "(§6{0}§r): §cOffline§r",
           "MsgFromDiscord": "(§d{0}§r) [§b{1}§r] {2}",
@@ -103,9 +103,13 @@ A plugin for Vellum 1.3+ to take advantage of ElementZero capabilities.  What do
 -----------------------
 GENERAL SETTINGS
 -----------------------
-PlayerConnMessages        (true/false) Generate messages when a player connects or disconnects
+PlayerConnMessages         (true/false) Generate messages when a player connects or disconnects
 
-ServerStatusMessages      (true/false) Generate messages related to the server going up or down
+ServerStatusMessages       (true/false) Generate messages related to the server going up or down
+
+UserDB                     Path to the ElementZero user information database.
+
+EssentialsDB               Path to the ElementZero essentials mod database (name tags stored there)
 
 -----------------------
 DISCORD SETTINGS
@@ -162,14 +166,20 @@ ChatMsg                   The format of a chat message sent by a Minecraft playe
                           {0} = The server's world name
                           {1} = The player's name
                           {2} = The message they sent
+                          {3} = The player's prefix from essentials.db
+                          {4} = The player's postfix from essentials.db
                           
 PlayerJoinMsg             The format of the message broadcast when a player joins
                           {0} = The server's world name
                           {1} = The player's name
+                          {2} = The player's prefix from essentials.db
+                          {3} = The player's postfix from essentials.db
 
 PlayerLeaveMsg            The format of the message broadcast when a player leaves
                           {0} = The server's world name
                           {1} = The player's name
+                          {2} = The player's prefix from essentials.db
+                          {3} = The player's postfix from essentials.db
 
 ServerUpMsg               The format of the message broadcast when a server comes online
                           {0} = The server world name
@@ -235,9 +245,9 @@ Vellum may be able to launch the official EZ docker container in a similar way, 
 Minecraft formatting will probably not work properly using the instructions above due to an encoding problem somewhere in the Russian nesting dolls of programs that are running to make this work. Until I figure out a workaround, you'll probably have to use this for the VZStrings section of configuration.json instead:
 ```
         "VZStrings": {
-          "ChatMsg": "({0}) <{1}> {2}",
-          "PlayerJoinMsg": "({0}) {1} Connected",
-          "PlayerLeaveMsg": "({0}) {1} Left",
+          "ChatMsg": "({0}) <{3}{1}{4}> {2}",
+          "PlayerJoinMsg": "({0}) {2}{1}{3} Connected",
+          "PlayerLeaveMsg": "({0}) {2}{1}{3} Left",
           "ServerUpMsg": "({0}): Online",
           "ServerDownMsg": "({0}): Offline",
           "MsgFromDiscord": "({0}) [{1}] {2}",
