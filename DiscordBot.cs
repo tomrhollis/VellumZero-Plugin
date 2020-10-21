@@ -41,6 +41,11 @@ namespace VellumZero
             await _client.LoginAsync(TokenType.Bot, dsConfig.DiscordToken);
             await _client.StartAsync();
             Channel = (ITextChannel)_client.GetChannel(dsConfig.DiscordChannel);
+
+            // set game
+            if(_vz.vzConfig.VZStrings.Playing != "")
+                await _client.SetGameAsync(_vz.vzConfig.VZStrings.Playing);
+
             _vz.Log(_vz.vzConfig.VZStrings.LogDiscConn);
         }
 
@@ -48,7 +53,7 @@ namespace VellumZero
         /// Shut down cleanly
         /// </summary>
         public async Task ShutDown()
-        {
+        {            
             await _client.LogoutAsync();
             await _client.StopAsync();
             _vz.Log(_vz.vzConfig.VZStrings.LogDiscDC);
@@ -154,12 +159,23 @@ namespace VellumZero
                 }
                 // send
                 await location.SendMessageAsync(message);
-        //    } catch (NullReferenceException ex)
-        //    {
-        //        _vz.Log("Error sending Discord message -- double check token and channel settings in configuration");
-        //        Console.WriteLine(ex.StackTrace);
-        //    }
-            
+            //    } catch (NullReferenceException ex)
+            //    {
+            //        _vz.Log("Error sending Discord message -- double check token and channel settings in configuration");
+            //        Console.WriteLine(ex.StackTrace);
+            //    }
+
+        }
+        public async Task UpdateChannelTopic(string text)
+        {
+            if (Channel == null) Channel = (ITextChannel)_client.GetChannel(dsConfig.DiscordChannel);
+
+            _vz.Log("Debug: Updating Discord Topic");
+            await ((ITextChannel)Channel).ModifyAsync(chan =>
+            {
+                chan.Topic = text;
+            });
+            _vz.Log("Debug: Discord Topic Updated");
         }
     }
 }

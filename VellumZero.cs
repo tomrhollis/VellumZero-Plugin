@@ -35,6 +35,11 @@ namespace VellumZero
         private bool crashing = false;
         private bool restartEventMade = false;
         private DateTime start = DateTime.Now;
+        private uint playerCount;
+        private uint playerSlots;
+        private uint networkPlayers;
+        private uint serversOnline;
+        private bool refreshingBusInfo = false;
 
         #region PLUGIN
         internal IHost Host;
@@ -93,6 +98,8 @@ namespace VellumZero
                     LogDiscDC = "Discord Disconnected",
                     LogBusConn = "Bus Detected",
                     LogEnd = "Plugin Unloaded",
+                    Playing = "Minecraft",
+                    ChannelTopic = "{0}/{1} players online",
                     ChatMsg = "(§6{0}§r) <{3}{1}{4}> {2}",
                     PlayerJoinMsg = "(§6{0}§r) {3}{1}{4} Connected",
                     PlayerLeaveMsg = "(§6{0}§r) {3}{1}{4} Left",
@@ -208,6 +215,10 @@ namespace VellumZero
                         // display join message
                         if (vzConfig.PlayerConnMessages) JoinMessage(user);
 
+                        // update Discord topic unless other servers will do it
+                        playerCount++;
+                        if (_discord != null) UpdateDiscordTopic();
+
                         // update all servers
                         if (_bus != null)
                         {
@@ -229,6 +240,10 @@ namespace VellumZero
                         // display leave message
                         if (vzConfig.PlayerConnMessages) LeaveMessage(user);
 
+                        // update Discord topic unless other servers will do it
+                        playerCount--;
+                        if (_discord != null) UpdateDiscordTopic();
+
                         // update all servers
                         if (_bus != null)
                         {
@@ -248,7 +263,12 @@ namespace VellumZero
                     bds.RegisterMatchHandler(Vellum.CommonRegex.ServerStarted, (object sender, MatchedEventArgs e) =>
                     {
                         // broadcast the server online message                        
-                        if (_discord != null && vzConfig.ServerStatusMessages) _discord.SendMessage(String.Format(vzConfig.VZStrings.ServerUpMsg, _worldName)).GetAwaiter().GetResult();
+                        if (_discord != null)
+                        {
+                            if (vzConfig.ServerStatusMessages) _discord.SendMessage(String.Format(vzConfig.VZStrings.ServerUpMsg, _worldName)).GetAwaiter().GetResult();
+                            UpdatePlayerCount(); // to get the total available player slots
+                            UpdateDiscordTopic();
+                        }
                     });
 
                     bds.Process.Exited += (object sender, EventArgs e) =>
@@ -268,13 +288,18 @@ namespace VellumZero
                             // send server disconnect message
                             if (vzConfig.ServerStatusMessages) Broadcast(String.Format(vzConfig.VZStrings.ServerDownMsg, _worldName));
                             Unload();
-                            Log(vzConfig.VZStrings.LogEnd);
+                            //Log(vzConfig.VZStrings.LogEnd);
                         }                        
                     };
+
+                    // when server crashes and watchdog catches it
                     ((IPlugin)bdsWatchdog).RegisterHook((byte)Watchdog.Hook.CRASH, (object sender, EventArgs e) => {
+                        if (!crashing && vzConfig.ServerStatusMessages && vzConfig.VZStrings.CrashMsg != "")
+                            Broadcast(String.Format(vzConfig.VZStrings.CrashMsg, _worldName));
                         crashing = true;
-                        if(vzConfig.ServerStatusMessages && vzConfig.VZStrings.CrashMsg != "") Broadcast(String.Format(vzConfig.VZStrings.CrashMsg, _worldName));
                     });
+
+                    // when watchdog gives up trying to revive the server
                     ((IPlugin)bdsWatchdog).RegisterHook((byte)Watchdog.Hook.LIMIT_REACHED, (object sender, EventArgs e) => {
                         if (crashing)
                         {
@@ -283,15 +308,28 @@ namespace VellumZero
                             Log(vzConfig.VZStrings.LogEnd);
                         }
                     });
+
+                    // when watchdog successfully recovers the server
                     ((IPlugin)bdsWatchdog).RegisterHook((byte)Watchdog.Hook.STABLE, (object sender, EventArgs e) => {                        
                         if (crashing && vzConfig.ServerStatusMessages && vzConfig.VZStrings.RecoverMsg != "") Broadcast(String.Format(vzConfig.VZStrings.RecoverMsg, _worldName));
                         crashing = false;
                     });
+
+                    // when a backup ends
                     ((IPlugin)backupManager).RegisterHook((byte)BackupManager.Hook.END, (object sender, EventArgs e) =>
                     {
                         if(DateTime.Now.Subtract(start).TotalMinutes > 5 && Host.RunConfig.Backups.StopBeforeBackup) RepeatableSetup();
                     });
+
+                    // when the list command is run, harvest its data
+                    bds.RegisterMatchHandler(@"^There are (\d+)/(\d+) players online:(.*)", (object sender, MatchedEventArgs e) =>
+                    {
+                        playerCount = Convert.ToUInt32(e.Matches[0].Groups[1].Value);
+                        playerSlots = Convert.ToUInt32(e.Matches[0].Groups[2].Value);
+                    });
+
                     serverEventsMade = true;
+
                 } else if (serverEventsMade && _bus == null && (sawChatAPIstring || sawCmdAPIstring))
                 {
                     _bus = new EZBus(this);
@@ -306,22 +344,31 @@ namespace VellumZero
         {
             if (vzConfig.DiscordSync.EnableDiscordSync) _discord = new DiscordBot(this);
 
-            if (vzConfig.ServerSync.EnableServerSync)
+            // double check player lists and servers every minute
+            rollCallTimer = new System.Timers.Timer(60000);
+            rollCallTimer.AutoReset = true;
+            rollCallTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
             {
-                // double check player lists and servers every 5 minutes
-                rollCallTimer = new System.Timers.Timer(300000);
-                rollCallTimer.AutoReset = true;
-                rollCallTimer.Elapsed += (object sender, ElapsedEventArgs e) =>
-                {
-                    RefreshBusServerInfo();
-                };
-            }
+                uint startPlayerCount = playerCount;
+
+                if (vzConfig.ServerSync.EnableServerSync) RefreshBusServerInfo();
+                UpdatePlayerCount(); // to account for partial connects without disconnect messages
+
+                if (_discord != null && (startPlayerCount != playerCount))
+                    UpdateDiscordTopic();
+            };
+
         }
 
         public void Unload()
         {
+            playerCount = 0;
+
             // gracefully disconnect from discord
+            UpdateDiscordTopic();
             if (_discord != null) _discord.ShutDown().GetAwaiter().GetResult();
+
+            // reset everything else
             StopTimers();
             _discord = null;
             _bus = null;                      
@@ -356,23 +403,58 @@ namespace VellumZero
         }
         #endregion
 
+        private void UpdatePlayerCount()
+        {
+            //if (_bus == null) bds.AddIgnorePattern(@"$There are \d+/\d+ players online:");
+            string result = Execute("list");
+            // if (_bus == null) bds.RemoveIgnorePattern(@"$There are \d+/\d+ players online:");
+            if (result != null)
+            {
+                Regex r = new Regex("\"currentPlayerCount\": (\\d+),");
+                Match m = r.Match(result);
+                if (m.Groups.Count > 1)
+                    playerCount = uint.Parse(m.Groups[1].ToString());
+
+                r = new Regex("\"maxPlayerCount\": (\\d+),");
+                m = r.Match(result);
+                if (m.Groups.Count > 1)
+                    playerSlots = uint.Parse(m.Groups[1].ToString());
+            }
+        }
+
+        private void UpdateDiscordTopic()
+        {
+            if (vzConfig.ServerSync.EnableServerSync) return;
+
+            if (vzConfig.VZStrings.ChannelTopic != "")
+            {
+                _discord.UpdateChannelTopic(String.Format(vzConfig.VZStrings.ChannelTopic, playerCount, playerSlots)).GetAwaiter().GetResult();
+            }
+        }
+
         private void RefreshBusServerInfo()
         {
+            if (refreshingBusInfo) return;
+            refreshingBusInfo = true;
             if (_bus == null) return;
             Execute($"scoreboard objectives add \"{vzConfig.ServerSync.ServerListScoreboard}\" dummy \"{vzConfig.ServerSync.ServerListScoreboard}\"");
             List<string> players = new List<string>();
+            serversOnline = 0;
             // get list of people from other servers
             foreach (string server in vzConfig.ServerSync.OtherServers)
             {
                 Execute($"scoreboard players reset \"{server}\" \"{vzConfig.ServerSync.ServerListScoreboard}\"");
                 string result = _bus.ExecuteCommand(server, "list");
                 if (result != "")
-                {
+                {                    
                     // update the online count from those servers while we're at it
                     Regex r = new Regex("\"currentPlayerCount\": (\\d+),");
                     Match m = r.Match(result);
                     if (m.Groups.Count > 1)
+                    {
+                        serversOnline++;
                         Execute($"scoreboard players add \"{server}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" {m.Groups[1]}");
+                    }
 
                     // parse the player list
                     r = new Regex("\"players\": \"([^\"]+?)\"");
@@ -385,11 +467,13 @@ namespace VellumZero
             Execute($"scoreboard objectives remove \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
             Execute($"scoreboard objectives add \"{vzConfig.ServerSync.OnlineListScoreboard}\" dummy \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
             if (vzConfig.ServerSync.DisplayOnlineList) Execute($"scoreboard objectives setdisplay list \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
+            networkPlayers = (uint)players.Count;
             foreach (string player in players)
             {
                 if (player.Length < 2) continue;
                 Execute($"scoreboard players add \"{player}\" Online 0");
             }
+            refreshingBusInfo = false;
         }
 
         /// <summary>
@@ -503,10 +587,11 @@ namespace VellumZero
         /// run a command on this server
         /// </summary>
         /// <param name="command">the command to run</param>
-        public void Execute(string command)
+        public string Execute(string command)
         {
-            if (_bus != null && _bus.commandSupportLoaded) _bus.ExecuteCommand(_worldName, command); 
-            else bds.SendInput(command); 
+            if (_bus != null && _bus.commandSupportLoaded) return _bus.ExecuteCommand(_worldName, command); 
+            else bds.SendInput(command);
+            return null;
         }
 
 
@@ -557,6 +642,8 @@ namespace VellumZero
         public string LogDiscDC;
         public string LogBusConn;
         public string LogEnd;
+        public string Playing;
+        public string ChannelTopic;
         public string ChatMsg;
         public string PlayerJoinMsg;
         public string PlayerLeaveMsg;

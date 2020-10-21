@@ -10,13 +10,19 @@ A plugin for Vellum 1.3+ to take advantage of ElementZero capabilities.  What do
 ## Features
 - Connect to a Discord bot to sync chat with a Discord channel
 - Create Discord mentions within Minecraft by using `@<User Name>` -- with the <> included
+- Change Discord bot "Playing" message and Discord channel topic message
 - Use ElementZero bus to sync chats between multiple servers
 - Update scoreboards on your servers with lists of what servers are online and the names of players on your network
 - Option to automatically add your other servers' players to the online list on the menu screen
 - Customizable text for any message the plugin sends
+- By default, EZ custom name prefixes & postfixes are included with any chat message sent
 - Release package includes [**any other Vellum plugin I've made**](https://github.com/tomrhollis/Vellum-Plugins), such as AutoRestart
 - More features to come! Check the issues list for issues with the Enhancements tag
-- **Now works in Linux through Wine -- see the bottom of this document for new Linux instructions**
+
+## A Note about Linux
+I had this working in Linux at version 1.0.2, but some features I added relied on libraries that I couldn't get working in Linux.  For that reason, only version VellumZero 1.0.2 works with Linux.  See the section at the bottom for instructions.  Someday after everything else is done, I'll come back to trying to get the latest version working with Linux.
+
+If you want to try to get it working you're definitely welcome to try, and you can ask me any questions about where things are stuck if you might be able to figure it out.  Since 1.0.2, VellumZero is still being compiled as a cross-platform DLL, just in case someone does figure it out.
 
 ## Installation (Windows)
 - Requires the following already set up: Bedrock Dedicated Server, ElementZero, and [**Vellum**](https://github.com/clarkx86/vellum). If using Discord then also a Discord bot, if you have multiple servers then also the [**ElementZero Minibus**](https://github.com/codehz/mini_bus_rust)
@@ -31,7 +37,7 @@ A plugin for Vellum 1.3+ to take advantage of ElementZero capabilities.  What do
     port: 4040
     reconnect-delay: 10
 ```
-- Notes on the Bus configuration: `name:` needs to be the same as this server's world name for all the other servers with VellumZero to find it.  Also the `port:` in custom.yaml is DIFFERENT from the port in configuration.json.  It's 4040 in custom.yaml, 8234 in configuration.json.
+- Notes on the Bus configuration: `name:` needs to be the same as this server's world name for all the other servers with VellumZero to find it.  Also the `port:` in custom.yaml is DIFFERENT from the `BusPort` in configuration.json.  It's 4040 in custom.yaml, 8234 in configuration.json.
 - Download the latest release from this repository and unzip it based on the instructions on the release page
 - Copy the sample configuration below into the Plugins section of vellum's configuration.json if it's not there already (or run vellum once or twice and it will generate the default settings for the plugin in configuration.json)
 - Read the descriptions of the settings below, and make any changes as needed
@@ -48,7 +54,7 @@ A plugin for Vellum 1.3+ to take advantage of ElementZero capabilities.  What do
 - Close all terminal windows and start fresh
 
 **Problem:** Strange characters appear in game or in Discord, especially when there should be color codes in the message.<br/>
-**Solution:** Windows terminals often don't use the modern standard of character encoding by default. To fix this, copy vellumzero.bat from the package zip file and use that to start the server.  It will switch the terminal to UTF-8 encoding and then run vellum as normal.  (Or add `chcp 65001` to your server script if you already have one)
+**Solution:** Windows terminals often don't use the modern standard of character encoding by default. To fix this, copy vellumzero.bat from the package zip file and use that to start the server.  It will switch the terminal to UTF-8 encoding and then run vellum as normal.  (Or add `chcp 65001` to the top of your server script if you already have one)
 
 **Problem:** NullReferenceException crash on startup<br/>
 **Solution:** Something in configuration.json is probably not formatted properly.  Try backing it up, deleting it, and running vellum to generate a new configuration.json.  Copy your settings back in, being careful to use the same format as the defaults.
@@ -78,6 +84,9 @@ A plugin for Vellum 1.3+ to take advantage of ElementZero capabilities.  What do
           "ServerListScoreboard": "Servers"
         },
         "VZStrings": {
+          "Playing": "Minecraft",
+          "ChannelTopicSolo": "{0}/{1} players online",
+          "ChannelTopicMulti": "{0} players online across {1} servers",
           "ChatMsg": "(§6{0}§r) <{3}{1}{4}> {2}",
           "PlayerJoinMsg": "(§6{0}§r) {2}{1}{3} Connected",
           "PlayerLeaveMsg": "(§6{0}§r) {2}{1}{3} Left",
@@ -162,6 +171,21 @@ ServerListScoreboard      The name of the scoreboard in game storing
 -----------------------------------------------------------------------------------------------------
 Text Settings - Don't worry about these unless you really want to change the wording the plugin uses
 -----------------------------------------------------------------------------------------------------
+Playing                   In Discord, the "game" the bot should be "Playing"
+                          "" = Disables this feature
+                          If you have multiple servers with different settings here, all using
+                          the same bot, the last one to connect to Discord will win.
+
+ChannelTopicSolo          What to display as the topic text in Discord if this is the only server
+                          "" = Disables this feature
+                          {0} # of users online on this server
+                          {1} # of possible users
+
+ChannelTopicMulti         What to display as the topic text in Discord if ServerSync is enabled
+                          "" = Disables this feature
+                          {0} # of users online on all servers
+                          {1} # of servers online
+
 ChatMsg                   The format of a chat message sent by a Minecraft player
                           {0} = The server's world name
                           {1} = The player's name
@@ -217,6 +241,8 @@ LogEnd                    The console message when the plugin is unloaded
 ```
 
 ## Linux Installation
+**NOTE: I have been unable to keep this working in Linux after the introduction of some new features, but Linux users may use [**release 1.0.2**](https://github.com/tomrhollis/VellumZero-Plugin/releases/tag/v1.0.2) with these instructions**
+
 Thanks to help from @bennydiamond, there's now instructions for running Vellum and ElementZero together in Wine.  To do so:
 - Install Wine version 5 or greater (search for instructions related to your distro)
 - Follow Microsoft's [**instructions for installing .NET Core 3.1 runtime**](https://docs.microsoft.com/en-us/dotnet/core/install/linux) for your distro
