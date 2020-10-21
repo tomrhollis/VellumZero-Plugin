@@ -111,54 +111,55 @@ namespace VellumZero
         /// <param name="text">The text to send to discord</param>
         public async Task SendMessage(string text)
         {   
-          //  try
-          //  {
-                string message = Regex.Replace(text, @"[§\u00a7][0-9a-gk-or]", ""); // strip minecraft formatting if any
-                message = Regex.Replace(message, @"@everyone", "everyone");
-                message = Regex.Replace(message, @"@here", "here");
-                var location = _client.GetChannel(dsConfig.DiscordChannel) as SocketTextChannel;
+            string message = Regex.Replace(text, @"[§\u00a7][0-9a-gk-or]", ""); // strip minecraft formatting if any
+            message = Regex.Replace(message, @"@everyone", "everyone");
+            message = Regex.Replace(message, @"@here", "here");
+            var location = _client.GetChannel(dsConfig.DiscordChannel) as SocketTextChannel;
 
-                if (dsConfig.DiscordMentions)
+            if (dsConfig.DiscordMentions)
+            {
+                // set up to do the find and replace for discord mentions
+                Regex userRegex = new Regex(@"@<([^>]+)>");
+                Regex channelRegex = new Regex(@"#([-a-z]+)", RegexOptions.IgnoreCase);
+                MatchCollection userMatches = userRegex.Matches(message);
+                MatchCollection channelMatches = channelRegex.Matches(message);
+
+                // replace @<username> with a mention string
+                foreach (Match um in userMatches)
                 {
-                    // set up to do the find and replace for discord mentions
-                    Regex userRegex = new Regex(@"@<([^>]+)>");
-                    Regex channelRegex = new Regex(@"#([-a-z]+)", RegexOptions.IgnoreCase);
-                    MatchCollection userMatches = userRegex.Matches(message);
-                    MatchCollection channelMatches = channelRegex.Matches(message);
+                    var users = location.Guild.Users.Where(user => user.Username.ToLower() == um.Groups[1].Value.ToLower());
+                    string userMention = null;
 
-                    // replace @<username> with a mention string
-                    foreach (Match um in userMatches)
+                    if (users.Count() > 0)
                     {
-                        var users = location.Guild.Users.Where(user => user.Username.ToLower() == um.Groups[1].Value.ToLower());
-                        string userMention = null;
-
-                        if (users.Count() > 0)
-                        {
-                            userMention = users.First().Mention;
-                            message = Regex.Replace(message, "@<" + um.Groups[1].Value + ">", userMention);
-                        }
-                    }
-
-                    // replace #channel-name with a mention string
-                    foreach (Match cm in channelMatches)
-                    {
-                        var channels = location.Guild.Channels.Where(channel => channel.Name == cm.Groups[1].Value.ToLower());
-                        ulong? channelId = null;
-
-                        if (channels.Count() > 0)
-                        {
-                            channelId = channels.First().Id;
-                            message = Regex.Replace(message, "#" + cm.Groups[1].Value, "<#" + channelId + ">");
-                        }
+                        userMention = users.First().Mention;
+                        message = Regex.Replace(message, "@<" + um.Groups[1].Value + ">", userMention);
                     }
                 }
-                // send
+
+                // replace #channel-name with a mention string
+                foreach (Match cm in channelMatches)
+                {
+                    var channels = location.Guild.Channels.Where(channel => channel.Name == cm.Groups[1].Value.ToLower());
+                    ulong? channelId = null;
+
+                    if (channels.Count() > 0)
+                    {
+                        channelId = channels.First().Id;
+                        message = Regex.Replace(message, "#" + cm.Groups[1].Value, "<#" + channelId + ">");
+                    }
+                }
+            }
+
+            try
+            {
                 await location.SendMessageAsync(message);
-        //    } catch (NullReferenceException ex)
-        //    {
-        //        _vz.Log("Error sending Discord message -- double check token and channel settings in configuration");
-        //        Console.WriteLine(ex.StackTrace);
-        //    }
+            } catch (Discord.Net.HttpException)
+            {
+                _vz.Log("Discord Error, Message Not Sent: " + message);
+            }
+            
+
             
         }
     }
