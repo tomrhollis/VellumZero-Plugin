@@ -154,9 +154,9 @@ namespace VellumZero
             try
             {
                 await location.SendMessageAsync(message);
-            } catch (Discord.Net.HttpException)
+            } catch (Exception ex)
             {
-                _vz.Log("Discord Error, Message Not Sent: " + message);
+                _vz.Log("Discord Error, Message Not Sent: " + message + "\nUnderlying Problem: " + ex.GetType().ToString() + " - " + ex.Message);
             }
             
 
