@@ -6,6 +6,7 @@
 using System;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Discord;
 using Discord.WebSocket;
@@ -21,6 +22,8 @@ namespace VellumZero
         private DiscordSyncConfig dsConfig;
         private IMessageChannel Channel;
         private VellumZero _vz;
+
+        static readonly CancellationTokenSource s_cts = new CancellationTokenSource();
 
         public DiscordBot(VellumZero parent)
         {
@@ -42,8 +45,8 @@ namespace VellumZero
             await _client.StartAsync();
             Channel = (ITextChannel)_client.GetChannel(dsConfig.DiscordChannel);
 
-            // set game
-            if(_vz.vzConfig.VZStrings.Playing != "")
+            // set game (but not if it's a server sync situation and this isn't the discord controller instance of vellum)
+            if(_vz.vzConfig.VZStrings.Playing != "" && !(_vz.vzConfig.ServerSync.EnableServerSync && !_vz.vzConfig.ServerSync.DiscordController))
                 await _client.SetGameAsync(_vz.vzConfig.VZStrings.Playing);
 
             _vz.Log(_vz.vzConfig.VZStrings.LogDiscConn);
@@ -53,7 +56,8 @@ namespace VellumZero
         /// Shut down cleanly
         /// </summary>
         public async Task ShutDown()
-        {            
+        {
+            await UpdateDiscordTopic(_vz.vzConfig.VZStrings.ChannelTopicOffline);
             await _client.LogoutAsync();
             await _client.StopAsync();
             _vz.Log(_vz.vzConfig.VZStrings.LogDiscDC);
@@ -163,19 +167,49 @@ namespace VellumZero
             {
                 _vz.Log("Discord Error, Message Not Sent: " + message);
             }
-            
-
         }
-        public async Task UpdateChannelTopic(string text)
-        {
-            if (Channel == null) Channel = (ITextChannel)_client.GetChannel(dsConfig.DiscordChannel);
 
-            _vz.Log("Debug: Updating Discord Topic");
-            await ((ITextChannel)Channel).ModifyAsync(chan =>
+
+        /// <summary>
+        /// Update the Discord channel's topic message
+        /// </summary>
+        internal async Task UpdateDiscordTopic(string topic = "")
+        {           
+            // if there are multiple servers and this one isn't authorized to send status updates to discord, abort
+            if (_vz.vzConfig.ServerSync.EnableServerSync && !_vz.vzConfig.ServerSync.DiscordController) return;
+
+            if (topic != "") { } // don't do anything if the string was provided
+
+            // otherwise if there are multiple servers and it is authorized, try to send using the multi-server string first
+            else if (_vz.vzConfig.ServerSync.EnableServerSync && _vz.vzConfig.ServerSync.DiscordController && _vz.vzConfig.VZStrings.ChannelTopicMulti != "")
             {
-                chan.Topic = text;
-            });
-            _vz.Log("Debug: Discord Topic Updated");
+                topic = String.Format(_vz.vzConfig.VZStrings.ChannelTopicMulti, _vz.Bus.PlayerCount, _vz.Bus.OnlineServerCount);
+            }
+
+            // as a last resort, check if we should send a single-server message instead
+            else if (_vz.vzConfig.VZStrings.ChannelTopic != "")
+            {
+                topic = String.Format(_vz.vzConfig.VZStrings.ChannelTopic, _vz.ThisServer.Players.Count, _vz.ThisServer.PlayerSlots);
+            }
+            // if the situation doesn't fall into either of the three categories above, abort
+            else return;
+
+            try
+            {
+                s_cts.CancelAfter(3000);
+                if (Channel == null) Channel = (ITextChannel)_client.GetChannel(dsConfig.DiscordChannel);
+
+                _vz.Log("Debug: Updating Discord Topic");
+                await ((ITextChannel)Channel).ModifyAsync(chan =>
+                {
+                    chan.Topic = topic;
+                });
+                _vz.Log("Debug: Discord Topic Updated");
+
+            } catch (Exception ex)
+            {
+                _vz.Log("Discord Error, Topic Not Updated.\n" + ex.GetType().ToString() + ": " + ex.Message);
+            }
         }
     }
 }

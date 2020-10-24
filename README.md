@@ -241,7 +241,7 @@ LogEnd                    The console message when the plugin is unloaded
 ```
 
 ## Linux Installation
-**NOTE: I have been unable to keep this working in Linux after the introduction of some new features, but Linux users may use [**release 1.0.2**](https://github.com/tomrhollis/VellumZero-Plugin/releases/tag/v1.0.2) with these instructions**
+**NOTE: I have been unable to keep this working in Linux after the introduction of some new features, but Linux users may use [**release 1.0.3**](https://github.com/tomrhollis/VellumZero-Plugin/releases/tag/v1.0.3) with these instructions**
 
 Thanks to help from @bennydiamond, there's now instructions for running Vellum and ElementZero together in Wine.  To do so:
 - Install Wine version 5 or greater (search for instructions related to your distro)
