@@ -134,7 +134,8 @@ namespace VellumZero
             autoRestart = host.GetPluginByName("AutoRestart");
 
             ThisServer = new Server(this, _worldName, 0, false);
-            
+            RepeatableSetup();
+
             // need to make these events even if plugin is disabled so if vellum is reloaded to enable it we'll have the info they get
             if (!busEventsMade)
             {
@@ -142,10 +143,10 @@ namespace VellumZero
                 bds.RegisterMatchHandler(@".+\[Bus\].+Load builtin extension for ChatAPI$", (object sender, MatchedEventArgs e) =>
                 {
                     sawChatAPIstring = true;
-                    if (vzConfig.ServerSync.EnableServerSync)
+                    if (vzConfig.ServerSync.EnableServerSync & Bus != null)
                     {
-                        if(Bus == null) Bus = new EZBus(this);
-                        Bus.chatSupportLoaded = true;                    
+                        Bus.chatSupportLoaded = true;
+                        Log(vzConfig.VZStrings.LogBusConn + ": ChatAPI");
                     }                    
                 });
                 // detect that the bus is loaded properly for commands 
@@ -154,13 +155,13 @@ namespace VellumZero
                     Regex r = new Regex(@".+\[CHAT\].+");
                     Match m = r.Match(e.Matches[0].ToString());
                     if (m.Success) return; // this is someone who knows too much typing the string in chat -- abort!
+
                     sawCmdAPIstring = true;
-                    if (vzConfig.ServerSync.EnableServerSync) {
-                        if (Bus == null) Bus = new EZBus(this);
+                    if (vzConfig.ServerSync.EnableServerSync & Bus != null) {
                         Bus.commandSupportLoaded = true;
+                        Log(vzConfig.VZStrings.LogBusConn + ": CommandSupport");
                     }
                 });
-
                 busEventsMade = true;
             }
 
@@ -173,8 +174,6 @@ namespace VellumZero
                 });
                 restartEventMade = true;
             }
-
-            RepeatableSetup();
 
             if (vzConfig.ServerSync.EnableServerSync || vzConfig.DiscordSync.EnableDiscordSync)
             {
@@ -237,17 +236,23 @@ namespace VellumZero
                         ThisServer.MarkAsOnline();
                         Execute("list"); // to get the total available player slots
 
-                        if(Bus != null)
+                        if (Bus != null)
                         {
                             // set up fresh scoreboards
-                            Execute($"scoreboard objectives remove \"{vzConfig.ServerSync.ServerListScoreboard}\"");
-                            Execute($"scoreboard objectives add \"{vzConfig.ServerSync.ServerListScoreboard}\" dummy \"{vzConfig.ServerSync.ServerListScoreboard}\"");
+                            if (vzConfig.ServerSync.ServerListScoreboard != "") 
+                            { 
+                                Execute($"scoreboard objectives remove \"{vzConfig.ServerSync.ServerListScoreboard}\"");
+                                Execute($"scoreboard objectives add \"{vzConfig.ServerSync.ServerListScoreboard}\" dummy \"{vzConfig.ServerSync.ServerListScoreboard}\"");
+                                Bus.BroadcastCommand($"scoreboard players add \"{_worldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" 0");
+                            }
 
-                            Execute($"scoreboard objectives remove \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
-                            Execute($"scoreboard objectives add \"{vzConfig.ServerSync.OnlineListScoreboard}\" dummy \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
-                            if (vzConfig.ServerSync.DisplayOnlineList) Execute($"scoreboard objectives setdisplay list \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
+                            if (vzConfig.ServerSync.OnlineListScoreboard != "")
+                            {
+                                Execute($"scoreboard objectives remove \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
+                                Execute($"scoreboard objectives add \"{vzConfig.ServerSync.OnlineListScoreboard}\" dummy \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
+                                if (vzConfig.ServerSync.DisplayOnlineList) Execute($"scoreboard objectives setdisplay list \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
+                            }
 
-                            Bus.BroadcastCommand($"scoreboard players add \"{_worldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" 0");
                             Bus.RefreshBusServerInfo();
                         }
 
@@ -312,6 +317,7 @@ namespace VellumZero
         private void RepeatableSetup()
         {
             if (vzConfig.DiscordSync.EnableDiscordSync) Discord = new DiscordBot(this);
+            if (vzConfig.ServerSync.EnableServerSync) Bus = new EZBus(this);
 
             // double check player lists and servers every minute
             rollCallTimer = new Timer(60000);

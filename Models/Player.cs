@@ -37,8 +37,11 @@ namespace VellumZero.Models
                 // update all servers
                 if (vz.Bus != null)
                 {
-                    vz.Bus.BroadcastCommand($"scoreboard players add \"{Name}\" \"{vz.vzConfig.ServerSync.OnlineListScoreboard}\" 0");
-                    vz.Bus.BroadcastCommand($"scoreboard players add \"{s.WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 1");
+                    if (vz.vzConfig.ServerSync.OnlineListScoreboard != "")
+                        vz.Bus.BroadcastCommand($"scoreboard players add \"{Name}\" \"{vz.vzConfig.ServerSync.OnlineListScoreboard}\" 0");
+
+                    if (vz.vzConfig.ServerSync.ServerListScoreboard != "")
+                        vz.Bus.BroadcastCommand($"scoreboard players add \"{s.WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 1");
                 }
             }
         }
@@ -62,8 +65,11 @@ namespace VellumZero.Models
                 // update all servers
                 if (vz.Bus != null)
                 {
-                    vz.Bus.BroadcastCommand($"scoreboard players reset \"{Name}\" \"{vz.vzConfig.ServerSync.OnlineListScoreboard}\"");
-                    vz.Bus.BroadcastCommand($"scoreboard players remove \"{s.WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 1");
+                    if (vz.vzConfig.ServerSync.OnlineListScoreboard != "")
+                        vz.Bus.BroadcastCommand($"scoreboard players reset \"{Name}\" \"{vz.vzConfig.ServerSync.OnlineListScoreboard}\"");
+                    
+                    if (vz.vzConfig.ServerSync.ServerListScoreboard != "")
+                        vz.Bus.BroadcastCommand($"scoreboard players remove \"{s.WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 1");
                 }
             }           
         }

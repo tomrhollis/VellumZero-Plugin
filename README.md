@@ -169,10 +169,12 @@ DisplayOnlineList         (true/false) Whether to add players from other servers
 OnlineListScoreboard      The name of the scoreboard in game where 
                           the names of players on other servers are stored
                           THE SCOREBOARD NAME MUST BE THE SAME ON ALL OF YOUR SERVERS TO WORK PROPERLY
+                          "" = Disable this feature
 
 ServerListScoreboard      The name of the scoreboard in game storing 
                           the names of all online servers on the network
                           THE SCOREBOARD NAME MUST BE THE SAME ON ALL OF YOUR SERVERS TO WORK PROPERLY
+                          "" = Disable this feature
 
 -----------------------------------------------------------------------------------------------------
 Text Settings - Don't worry about these unless you really want to change the wording the plugin uses

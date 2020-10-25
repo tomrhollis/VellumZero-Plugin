@@ -64,7 +64,7 @@ namespace VellumZero
             chatSupportLoaded = false;
             ssConfig = parent.vzConfig.ServerSync;
             localAddress = String.Format("http://{0}:{1}/", ssConfig.BusAddress, ssConfig.BusPort);
-            _vz.Log("Bus Connected");
+
             httpClient = new HttpClient();
             
             Network = new List<Server>();

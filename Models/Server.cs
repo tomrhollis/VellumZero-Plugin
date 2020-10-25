@@ -43,8 +43,9 @@ namespace VellumZero.Models
             {
                 if (vz.vzConfig.ServerStatusMessages) vz.Broadcast(String.Format(vz.vzConfig.VZStrings.ServerUpMsg, WorldName));
                 if (vz.Discord != null) vz.Discord.UpdateDiscordTopic().GetAwaiter().GetResult();
-                if (vz.Bus != null) vz.Bus.BroadcastCommand($"scoreboard players add \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 0");
-            } else
+                if (vz.Bus != null && vz.vzConfig.ServerSync.ServerListScoreboard != "") vz.Bus.BroadcastCommand($"scoreboard players add \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 0");
+            } 
+            else if (vz.vzConfig.ServerSync.ServerListScoreboard != "")
             {
                 vz.Execute($"scoreboard players add \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 0");
             }
@@ -59,8 +60,10 @@ namespace VellumZero.Models
             {
                 if (vz.vzConfig.ServerStatusMessages) vz.Broadcast(String.Format(vz.vzConfig.VZStrings.ServerDownMsg, WorldName));
                 if (vz.Discord != null) vz.Discord.UpdateDiscordTopic().GetAwaiter().GetResult();
-                if (vz.Bus != null) vz.Bus.BroadcastCommand($"scoreboard players reset \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\"");
-            } else
+                if (vz.Bus != null && vz.vzConfig.ServerSync.ServerListScoreboard != "") 
+                    vz.Bus.BroadcastCommand($"scoreboard players reset \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\"");
+            }
+            else if (vz.vzConfig.ServerSync.ServerListScoreboard != "")
             {
                 vz.Execute($"scoreboard players reset \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\"");
             }
