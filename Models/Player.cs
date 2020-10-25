@@ -37,15 +37,15 @@ namespace VellumZero.Models
                 // update all servers
                 if (vz.Bus != null)
                 {
-                    vz.Bus.BroadcastCommand($"scoreboard players add \"{Name}\" \"{vz.vzConfig.ServerSync.OnlineListScoreboard}\" 0", skipLocal: true);
-                    vz.Bus.BroadcastCommand($"scoreboard players add \"{vz.ThisServer.WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 1", skipLocal: true);
+                    vz.Bus.BroadcastCommand($"scoreboard players add \"{Name}\" \"{vz.vzConfig.ServerSync.OnlineListScoreboard}\" 0");
+                    vz.Bus.BroadcastCommand($"scoreboard players add \"{s.WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 1");
                 }
             }
         }
 
         public static Player CreateInstance(VellumZero v, Server s, string n, ulong x = 0)
         {
-            if (x == 0 && s == v.ThisServer) return null;
+            if (x == 0 && s == v.ThisServer) return null; // xuid required for local server (may change this later)
             return new Player(v, s, n, x);
         }
 
@@ -59,14 +59,11 @@ namespace VellumZero.Models
                 // display leave message
                 if (vz.vzConfig.PlayerConnMessages) vz.LeaveMessage(this);
 
-                // update Discord topic unless other servers will do it
-                if (vz.Discord != null) vz.Discord.UpdateDiscordTopic().GetAwaiter().GetResult();
-
                 // update all servers
                 if (vz.Bus != null)
                 {
-                    vz.Bus.BroadcastCommand($"scoreboard players reset \"{Name}\" \"{vz.vzConfig.ServerSync.OnlineListScoreboard}\"", skipLocal: true);
-                    vz.Bus.BroadcastCommand($"scoreboard players remove \"{vz.ThisServer.WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 1", skipLocal: true);
+                    vz.Bus.BroadcastCommand($"scoreboard players reset \"{Name}\" \"{vz.vzConfig.ServerSync.OnlineListScoreboard}\"");
+                    vz.Bus.BroadcastCommand($"scoreboard players remove \"{s.WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 1");
                 }
             }           
         }

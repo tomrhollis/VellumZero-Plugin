@@ -26,8 +26,6 @@ namespace VellumZero
         private HttpClient httpClient;
         public List<Server> Network;
 
-        private bool refreshingBusInfo = false;
-
         static readonly CancellationTokenSource s_cts = new CancellationTokenSource();
 
         internal uint PlayerCount
@@ -35,6 +33,14 @@ namespace VellumZero
             get
             {
                 return (uint)Network.Sum(s => { return (s.Online) ? s.Players.Count : 0; });
+            }
+        }
+
+        internal uint TotalSlots
+        {
+            get
+            {
+                return (uint)Network.Sum(s => { return (s.Online) ? s.PlayerSlots : 0; });
             }
         }
 
@@ -60,7 +66,9 @@ namespace VellumZero
             localAddress = String.Format("http://{0}:{1}/", ssConfig.BusAddress, ssConfig.BusPort);
             _vz.Log("Bus Connected");
             httpClient = new HttpClient();
-
+            
+            Network = new List<Server>();
+            Network.Add(_vz.ThisServer);
             foreach(string s in _vz.vzConfig.ServerSync.OtherServers)
             {
                 Network.Add(new Server(_vz, s, 0, false));
@@ -167,12 +175,12 @@ namespace VellumZero
             return result;
         }
 
-        internal bool BroadcastCommand(string command, bool skipLocal=false)
+        internal bool BroadcastCommand(string command, bool skipLocal=true)
         {
             bool infoChanged = false;
             foreach(Server s in Network)
             {
-                if (skipLocal && s == Network[0]) continue;
+                if (skipLocal && s == _vz.ThisServer) continue;
                 if (s.Online)
                 {
                     if (ExecuteCommand(s.WorldName, command) == "")
@@ -186,47 +194,29 @@ namespace VellumZero
         }
 
 
-        internal void RefreshBusServerInfo()
+        internal bool RefreshBusServerInfo()
         {
-            if (refreshingBusInfo) return;
-            refreshingBusInfo = true;
-            _vz.Execute($"scoreboard objectives add \"{_vz.vzConfig.ServerSync.ServerListScoreboard}\" dummy \"{_vz.vzConfig.ServerSync.ServerListScoreboard}\"");
             List<string> players = new List<string>();
+            bool updated = false;
+
             // get list of people from other servers
-            foreach (string server in _vz.vzConfig.ServerSync.OtherServers)
+            foreach (Server s in Network)
             {
-                _vz.Execute($"scoreboard players reset \"{server}\" \"{_vz.vzConfig.ServerSync.ServerListScoreboard}\"");
-                string result = ExecuteCommand(server, "list");
+                string result = ExecuteCommand(s.WorldName, "list");
                 if (result != "")
                 {
-                    // update the online count from those servers while we're at it
-                    Regex r = new Regex("\"currentPlayerCount\": (\\d+),");
+                    // parse the player list
+                    Regex r = new Regex("\"players\": \"([^\"]+?)\"");
                     Match m = r.Match(result);
                     if (m.Groups.Count > 1)
-                    {
-                        serversOnline++;
-                        _vz.Execute($"scoreboard players add \"{server}\" \"{_vz.vzConfig.ServerSync.ServerListScoreboard}\" {m.Groups[1]}");
-                    }
-
-                    // parse the player list
-                    r = new Regex("\"players\": \"([^\"]+?)\"");
-                    m = r.Match(result);
-                    if (m.Groups.Count > 1)
-                        players.AddRange(m.Groups[1].ToString().Split(',').ToList());
+                        updated = (updated) ? updated : s.BusInfoUpdate(m.Groups[1].ToString());
+                } else
+                {                    
+                    s.MarkAsOffline();
+                    updated = true;
                 }
             }
-            // apply that list to the scoreboard     
-            Execute($"scoreboard objectives remove \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
-            Execute($"scoreboard objectives add \"{vzConfig.ServerSync.OnlineListScoreboard}\" dummy \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
-            if (vzConfig.ServerSync.DisplayOnlineList) Execute($"scoreboard objectives setdisplay list \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
-            networkPlayers = (uint)players.Count;
-            foreach (string player in players)
-            {
-                if (player.Length < 2) continue;
-                Execute($"scoreboard players add \"{player}\" Online 0");
-            }
-            refreshingBusInfo = false;
+            return updated;
         }
-
     }
 }

@@ -26,8 +26,7 @@ namespace VellumZero
         static readonly CancellationTokenSource s_cts = new CancellationTokenSource();
 
         public DiscordBot(VellumZero parent)
-        {
-            
+        {            
             _vz = parent;
             dsConfig = parent.vzConfig.DiscordSync;
             _vz.Log(_vz.vzConfig.VZStrings.LogDiscInit);
@@ -163,9 +162,9 @@ namespace VellumZero
             try
             {
                 await location.SendMessageAsync(message);
-            } catch(Discord.Net.HttpException)
+            } catch(Exception ex)
             {
-                _vz.Log("Discord Error, Message Not Sent: " + message);
+                _vz.Log("Discord Error, Message Not Sent: " + message + "\nUnderlying Problem: " + ex.GetType().ToString() + " - " + ex.Message);
             }
         }
 
@@ -178,21 +177,19 @@ namespace VellumZero
             // if there are multiple servers and this one isn't authorized to send status updates to discord, abort
             if (_vz.vzConfig.ServerSync.EnableServerSync && !_vz.vzConfig.ServerSync.DiscordController) return;
 
-            if (topic != "") { } // don't do anything if the string was provided
-
             // otherwise if there are multiple servers and it is authorized, try to send using the multi-server string first
-            else if (_vz.vzConfig.ServerSync.EnableServerSync && _vz.vzConfig.ServerSync.DiscordController && _vz.vzConfig.VZStrings.ChannelTopicMulti != "")
+            if (_vz.vzConfig.ServerSync.EnableServerSync && _vz.vzConfig.ServerSync.DiscordController && _vz.vzConfig.VZStrings.ChannelTopicMulti != "")
             {
-                topic = String.Format(_vz.vzConfig.VZStrings.ChannelTopicMulti, _vz.Bus.PlayerCount, _vz.Bus.OnlineServerCount);
+                if (topic != "") topic = String.Format(_vz.vzConfig.VZStrings.ChannelTopicMulti, _vz.Bus.PlayerCount, _vz.Bus.OnlineServerCount);
             }
 
             // as a last resort, check if we should send a single-server message instead
             else if (_vz.vzConfig.VZStrings.ChannelTopic != "")
             {
-                topic = String.Format(_vz.vzConfig.VZStrings.ChannelTopic, _vz.ThisServer.Players.Count, _vz.ThisServer.PlayerSlots);
+                if (topic != "") topic = String.Format(_vz.vzConfig.VZStrings.ChannelTopic, _vz.ThisServer.Players.Count, _vz.ThisServer.PlayerSlots);
             }
-            // if the situation doesn't fall into either of the three categories above, abort
-            else return;
+            // if the situation doesn't fall into either of the categories above
+            if (topic == "") return;
 
             try
             {
@@ -208,7 +205,7 @@ namespace VellumZero
 
             } catch (Exception ex)
             {
-                _vz.Log("Discord Error, Topic Not Updated.\n" + ex.GetType().ToString() + ": " + ex.Message);
+                _vz.Log("Discord Error, Topic Not Updated.\nUnderlying Problem: " + ex.GetType().ToString() + " - " + ex.Message);
             }
         }
     }

@@ -76,6 +76,7 @@ If you want to try to get it working you're definitely welcome to try, and you c
         },
         "ServerSync": {
           "EnableServerSync": false,
+          "DiscordController": false,
           "OtherServers": [ ],
           "BusAddress": "127.0.0.1",
           "BusPort": 8234,
@@ -149,6 +150,11 @@ OtherServers              A list of the bus names of all the other servers on yo
                           Each server's bus name should be the same as their world name for best results
                           [ ] = none
                           ["Survival", "Creative", "Testing Ground", "Etc"] = example of a list
+
+DiscordController         Some Discord interactions will lock up the connection if multiple servers do them
+                          so you need to designate one server in your network to handle those tasks
+                          ("Playing..." message and Channel Topic)
+                          Set DiscordController to true on ONE of your servers, and false on ALL OTHERS
                           
 BusAddress                The address of the server where the Minibus is running
                           Leave as the default 127.0.0.1 if it's in the same place as this copy of Vellum
@@ -182,9 +188,10 @@ ChannelTopicSolo          What to display as the topic text in Discord if this i
                           {1} # of possible users
 
 ChannelTopicMulti         What to display as the topic text in Discord if ServerSync is enabled
-                          "" = Disables this feature
+                          "" = Disables this feature (uses ChannelTopicSolo instead)
                           {0} # of users online on all servers
                           {1} # of servers online
+                          {2} Total # of player slots on all servers
 
 ChatMsg                   The format of a chat message sent by a Minecraft player
                           {0} = The server's world name

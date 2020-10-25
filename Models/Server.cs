@@ -1,5 +1,9 @@
-﻿using System;
+﻿using Discord;
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+using Vellum.Automation;
 
 namespace VellumZero.Models
 {
@@ -35,76 +39,124 @@ namespace VellumZero.Models
             BootTime = DateTime.Now;
 
             // send updates
-            vz.Broadcast(String.Format(vz.vzConfig.VZStrings.ServerUpMsg, vz._worldName));
-            vz.UpdateDiscordTopic();
-        }
+            if (this == vz.ThisServer)
+            {
+                if (vz.vzConfig.ServerStatusMessages) vz.Broadcast(String.Format(vz.vzConfig.VZStrings.ServerUpMsg, WorldName));
+                if (vz.Discord != null) vz.Discord.UpdateDiscordTopic().GetAwaiter().GetResult();
+                if (vz.Bus != null) vz.Bus.BroadcastCommand($"scoreboard players add \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 0");
+            } else
+            {
+                vz.Execute($"scoreboard players add \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 0");
+            }
+}
 
         public void MarkAsOffline()
         {
             Online = false;
 
             // send updates
-            vz.Broadcast(String.Format(vz.vzConfig.VZStrings.ServerUpMsg, vz._worldName));
-            vz.UpdateDiscordTopic();
+            if (this == vz.ThisServer)
+            {
+                if (vz.vzConfig.ServerStatusMessages) vz.Broadcast(String.Format(vz.vzConfig.VZStrings.ServerDownMsg, WorldName));
+                if (vz.Discord != null) vz.Discord.UpdateDiscordTopic().GetAwaiter().GetResult();
+                if (vz.Bus != null) vz.Bus.BroadcastCommand($"scoreboard players reset \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\"");
+            } else
+            {
+                vz.Execute($"scoreboard players reset \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\"");
+            }
         }
 
-        /// <summary>
-        /// Update information for this server based on a string returned from commandline or bus
-        /// </summary>
-        /// <param name="info">the string to parse</param>
-        /// <param name="bus">if it came from the bus or not (or not = it came from the command line)</param>
-        /// <returns>whether anything was updated</returns>
-        public bool UpdateInfo(string info, bool bus = false)
+        internal void RemovePlayer(ulong xuid)
+        {
+            Players.Remove(Players.Find(p => { return p.Xuid == xuid; }));
+        }
+
+
+        internal bool ConsoleInfoUpdate(MatchedEventArgs e)
         {
             bool updated = false;
-            if (!Online)
+            string playerList = "";
+
+            if (e.Matches.Count > 0)
+            {
+                if (e.Matches[0].Groups.Count > 2)
+                {
+                    uint slots;
+                    slots = uint.Parse(e.Matches[0].Groups[2].Value);
+                    if (slots != PlayerSlots)
+                    {
+                        PlayerSlots = slots;
+                        updated = true;
+                    }
+                }
+                if (e.Matches[0].Groups.Count > 3) playerList = e.Matches[0].Groups[3].Value;
+            }
+            return UpdateInfo(playerList, updated);
+        }
+
+        internal bool BusInfoUpdate(string info)
+        {
+            Regex r;
+            Match m;
+            bool updated = false;
+            string playerList = "";
+
+            if (this != vz.ThisServer && !Online) // don't do this check for local server, could result in bad info when shutting down
             {
                 MarkAsOnline();
                 updated = true;
             }
 
-            if (bus)
+            r = new Regex("\"maxPlayerCount\": \"(\\d+)\",");
+            m = r.Match(info);
+            if (m.Groups.Count > 1)
             {
-
-            } else
-            {
-
+                uint slots;
+                slots = uint.Parse(m.Groups[1].Value);
+                if (slots != PlayerSlots)
+                {
+                    PlayerSlots = slots;
+                    updated = true;
+                }
             }
 
-            // if updated, pass info where it needs to go
-            return updated;
+            r = new Regex("\"players\": \"(.*)\",");
+            m = r.Match(info);
+            if (m.Groups.Count > 1)
+                playerList = m.Groups[1].ToString();
+
+            return UpdateInfo(playerList, updated);
         }
 
-
-        /// <summary>
-        /// Update the player count. If there is no minibus, it will use a console command
-        /// The string for the console command will be processed by the match event defined when VZ initialized
-        /// If it used the bus, the result is processed here instead
-        /// </summary>
-        private void UpdatePlayerInfo()
+        private bool UpdateInfo(string list, bool updated = false)
         {
-            //if (_bus == null) bds.AddIgnorePattern(@"$There are \d+/\d+ players online:");
-            string result = Execute("list");
-            // if (_bus == null) bds.RemoveIgnorePattern(@"$There are \d+/\d+ players online:");
-            if (result != null)
+            List<string> names = list.Split(',').ToList();
+            List<string> currentList = new List<string>();
+            List<Player> removeList = new List<Player>();
+
+            Players.ForEach(p =>
             {
-                Regex r;
-                Match m;
-
-                if (Servers.Count == 0)
+                if (!names.Contains(p.Name))
                 {
-                    r = new Regex("\"maxPlayerCount\": \"(\\d+)\",");
-                    m = r.Match(result);
-                    if (m.Groups.Count > 1)
-                        Servers.Add(new Server(_worldName, Convert.ToUInt32(m.Groups[1].Value), true));
-                    if (vzConfig.ServerSync.EnableServerSync && vzConfig.ServerSync.OtherServers.Length > 0) InitializeServerList();
+                    removeList.Add(p);
+                    updated = true;
                 }
+                else currentList.Add(p.Name);
+            });
+            removeList.ForEach(p =>
+            {
+                Players.Remove(p);
+            });
+            names.ForEach(n =>
+            {
+                if (!currentList.Contains(n))
+                {
+                    Players.Add(Player.CreateInstance(vz, this, n, 0));
+                    updated = true;
+                }
+            });
 
-                r = new Regex("\"players\": \"(.*)\",");
-                m = r.Match(result);
-                if (m.Groups.Count > 1)
-                    Servers[0].UpdatePlayers(m.Groups[1].ToString().Split(',').ToList());
-            }
+            return updated;
         }
     }
 }
