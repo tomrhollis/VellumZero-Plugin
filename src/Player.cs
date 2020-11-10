@@ -1,9 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data.SQLite;
-using System.Text;
+﻿using System.Data.SQLite;
 
-namespace VellumZero.Models
+namespace VellumZero
 {
     public class Player
     {
@@ -15,24 +12,25 @@ namespace VellumZero.Models
         // for later: public string DiscordUID { get; private set; }
 
         private VellumZero vz;
-        private Server s;
+        private Server server;
 
         private Player(VellumZero v, Server s, string n, ulong x=0)
         {
             vz = v;
             Name = n;
             Xuid = x;
+            server = s;
 
             GetUUID();
             RefreshAffixes();
 
-            if (s == vz.ThisServer)
+            if (server == vz.ThisServer)
             {
                 // display join message
                 if (vz.vzConfig.PlayerConnMessages) vz.JoinMessage(this);
 
                 // update Discord topic unless other servers will do it
-                if (vz.Discord != null) vz.Discord.UpdateDiscordTopic().GetAwaiter().GetResult();
+                if (vz.Discord != null) vz.Discord.UpdateDiscordTopic();
 
                 // update all servers
                 if (vz.Bus != null)
@@ -41,7 +39,7 @@ namespace VellumZero.Models
                         vz.Bus.BroadcastCommand($"scoreboard players add \"{Name}\" \"{vz.vzConfig.ServerSync.OnlineListScoreboard}\" 0");
 
                     if (vz.vzConfig.ServerSync.ServerListScoreboard != "")
-                        vz.Bus.BroadcastCommand($"scoreboard players add \"{s.WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 1");
+                        vz.Bus.BroadcastCommand($"scoreboard players add \"{server.WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 1");
                 }
             }
         }
@@ -49,15 +47,13 @@ namespace VellumZero.Models
         public static Player CreateInstance(VellumZero v, Server s, string n, ulong x = 0)
         {
             if (x == 0 && s == v.ThisServer) return null; // xuid required for local server (may change this later)
-            return new Player(v, s, n, x);
+            Player p = new Player(v, s, n, x);
+            return p;
         }
 
-        /// <summary>
-        /// Cleanup to run when a player leaves
-        /// </summary>
-        ~Player()
+        internal void Leave()
         {
-            if (vz.ThisServer.Online && s == vz.ThisServer) // don't gum up the works with DC messages if the server is going down
+            if (server == vz.ThisServer)
             {
                 // display leave message
                 if (vz.vzConfig.PlayerConnMessages) vz.LeaveMessage(this);
@@ -67,11 +63,11 @@ namespace VellumZero.Models
                 {
                     if (vz.vzConfig.ServerSync.OnlineListScoreboard != "")
                         vz.Bus.BroadcastCommand($"scoreboard players reset \"{Name}\" \"{vz.vzConfig.ServerSync.OnlineListScoreboard}\"");
-                    
+
                     if (vz.vzConfig.ServerSync.ServerListScoreboard != "")
-                        vz.Bus.BroadcastCommand($"scoreboard players remove \"{s.WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 1");
+                        vz.Bus.BroadcastCommand($"scoreboard players remove \"{server.WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 1");
                 }
-            }           
+            }
         }
 
         /// <summary>
@@ -133,6 +129,11 @@ namespace VellumZero.Models
             {
                 vz.Log("Error accessing name affix information in a SQLite database");
             }
+        }
+
+        public override string ToString()
+        {
+            return Prefix + Name + Postfix + "- xuid:" + Xuid + " uuid:" + Uuid;
         }
     }
 }

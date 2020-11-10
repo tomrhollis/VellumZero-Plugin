@@ -10,8 +10,6 @@ using System;
 using Vellum.Automation;
 using System.Text.RegularExpressions;
 using System.Timers;
-using System.Linq;
-using VellumZero.Models;
 
 namespace VellumZero
 {
@@ -52,7 +50,7 @@ namespace VellumZero
             DISCORD_REC,
         }
 
-        ProcessManager bds;
+        internal ProcessManager bds;
         BackupManager backupManager;
         //RenderManager renderManager;
         Watchdog bdsWatchdog;
@@ -160,6 +158,23 @@ namespace VellumZero
                     if (vzConfig.ServerSync.EnableServerSync & Bus != null) {
                         Bus.commandSupportLoaded = true;
                         Log(vzConfig.VZStrings.LogBusConn + ": CommandSupport");
+
+                        // set up fresh scoreboards
+                        if (vzConfig.ServerSync.ServerListScoreboard != "")
+                        {
+                            Execute($"scoreboard objectives remove \"{vzConfig.ServerSync.ServerListScoreboard}\"");
+                            Execute($"scoreboard objectives add \"{vzConfig.ServerSync.ServerListScoreboard}\" dummy \"{vzConfig.ServerSync.ServerListScoreboard}\"");
+                            Bus.BroadcastCommand($"scoreboard players add \"{_worldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" 0");
+                        }
+
+                        if (vzConfig.ServerSync.OnlineListScoreboard != "")
+                        {
+                            Execute($"scoreboard objectives remove \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
+                            Execute($"scoreboard objectives add \"{vzConfig.ServerSync.OnlineListScoreboard}\" dummy \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
+                            if (vzConfig.ServerSync.DisplayOnlineList) Execute($"scoreboard objectives setdisplay list \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
+                        }
+
+                        Bus.RefreshBusServerInfo();
                     }
                 });
                 busEventsMade = true;
@@ -198,26 +213,32 @@ namespace VellumZero
                 if (!playerEventsMade)
                 {
                     // when player connects
-                    bds.RegisterMatchHandler(Vellum.CommonRegex.PlayerConnected, (object sender, MatchedEventArgs e) =>
+                    bds.RegisterMatchHandler(@".+Player connected: (.+), xuid: (\d+)", (object sender, MatchedEventArgs e) =>
                     {
-                        Regex r = new Regex(@": (.+), xuid: (\d+)");
-                        Match m = r.Match(e.Matches[0].ToString());
-                        string user = m.Groups[1].ToString();
-                        ulong xuid = ulong.Parse(m.Groups[2].ToString());
+                        Regex r = new Regex(@".+\[CHAT\].+");
+                        Match m = r.Match(e.Matches[0].Value);
+                        if (m.Success) return; // this is someone who knows too much typing the string in chat -- abort!
 
-                        ThisServer.Players.Add(Player.CreateInstance(this, ThisServer, user, xuid));
-                        if (Discord != null) Discord.UpdateDiscordTopic().GetAwaiter().GetResult();
+                        string user = e.Matches[0].Groups[1].Value;
+                        ulong xuid = ulong.Parse(e.Matches[0].Groups[2].Value);
+
+                        Player player = Player.CreateInstance(this, ThisServer, user, xuid);
+                        ThisServer.AddPlayer(player);
+
+                        //if (Discord != null) Discord.UpdateDiscordTopic();
                     });
 
                     // when player disconnects
-                    bds.RegisterMatchHandler(Vellum.CommonRegex.PlayerDisconnected, (object sender, MatchedEventArgs e) =>
+                    bds.RegisterMatchHandler(@".+Player disconnected: (.+), xuid: (\d+)", (object sender, MatchedEventArgs e) =>
                     {
-                        Regex r = new Regex(@": (.+), xuid: (\d+)");
-                        Match m = r.Match(e.Matches[0].ToString());
-                        ulong xuid = ulong.Parse(m.Groups[2].ToString());
+                        Regex r = new Regex(@".+\[CHAT\].+");
+                        Match m = r.Match(e.Matches[0].Value);
+                        if (m.Success) return; // this is someone who knows too much typing the string in chat -- abort!
+
+                        ulong xuid = ulong.Parse(e.Matches[0].Groups[2].Value);
 
                         ThisServer.RemovePlayer(xuid);
-                        if (Discord != null) Discord.UpdateDiscordTopic().GetAwaiter().GetResult();
+                        //if (Discord != null) Discord.UpdateDiscordTopic();
                     });
                     playerEventsMade = true;
                 }                
@@ -226,7 +247,7 @@ namespace VellumZero
                 if (!serverEventsMade)
                 {
                     // when the list command is run, harvest its data
-                    bds.RegisterMatchHandler(@"^There are (\d+)/(\d+) players online:(.*)", (object sender, MatchedEventArgs e) =>
+                    bds.RegisterMatchHandler(@"^There are (\d+)/(\d+) players online:\n(.*)", (object sender, MatchedEventArgs e) =>
                     {
                         ThisServer.ConsoleInfoUpdate(e);
                     });
@@ -236,27 +257,7 @@ namespace VellumZero
                         ThisServer.MarkAsOnline();
                         Execute("list"); // to get the total available player slots
 
-                        if (Bus != null)
-                        {
-                            // set up fresh scoreboards
-                            if (vzConfig.ServerSync.ServerListScoreboard != "") 
-                            { 
-                                Execute($"scoreboard objectives remove \"{vzConfig.ServerSync.ServerListScoreboard}\"");
-                                Execute($"scoreboard objectives add \"{vzConfig.ServerSync.ServerListScoreboard}\" dummy \"{vzConfig.ServerSync.ServerListScoreboard}\"");
-                                Bus.BroadcastCommand($"scoreboard players add \"{_worldName}\" \"{vzConfig.ServerSync.ServerListScoreboard}\" 0");
-                            }
-
-                            if (vzConfig.ServerSync.OnlineListScoreboard != "")
-                            {
-                                Execute($"scoreboard objectives remove \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
-                                Execute($"scoreboard objectives add \"{vzConfig.ServerSync.OnlineListScoreboard}\" dummy \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
-                                if (vzConfig.ServerSync.DisplayOnlineList) Execute($"scoreboard objectives setdisplay list \"{vzConfig.ServerSync.OnlineListScoreboard}\"");
-                            }
-
-                            Bus.RefreshBusServerInfo();
-                        }
-
-                        if (Discord != null) Discord.UpdateDiscordTopic().GetAwaiter().GetResult();
+                        if (Discord != null) Discord.UpdateDiscordTopic();
 
                         rollCallTimer.Start();
                     });
@@ -332,6 +333,7 @@ namespace VellumZero
 
         public void Unload()
         {
+            
             // gracefully disconnect from discord
             if (Discord != null) Discord.ShutDown().GetAwaiter().GetResult();
 
@@ -408,21 +410,14 @@ namespace VellumZero
 
         public void Broadcast(string message)
         {
-            if (Discord != null) Discord.SendMessage(message).GetAwaiter().GetResult();
+            if (Discord != null) Discord.SendMessage(message);
             if (Bus != null) Bus.Broadcast(message);
         }
 
-        private void SendTellraw(string message)
+        internal void SendTellraw(string message)
         {
             message.Replace("\"", "'");
             bds.SendInput("tellraw @a {\"rawtext\":[{\"text\":\"" + message + "\"}]}");
-        }
-
-        public void RelayToServer(string message)
-        {
-            // if there's a bus, use that to avoid console confirmation messages. Otherwise use console
-            if (Bus != null && Bus.chatSupportLoaded) Bus.Announce(_worldName, message);
-            else if (bds.IsRunning) SendTellraw(message);
         }
 
         /// <summary>

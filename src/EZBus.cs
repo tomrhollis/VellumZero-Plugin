@@ -9,7 +9,6 @@ using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading;
-using VellumZero.Models;
 
 namespace VellumZero
 {
@@ -32,7 +31,8 @@ namespace VellumZero
         {
             get
             {
-                return (uint)Network.Sum(s => { return (s.Online) ? s.Players.Count : 0; });
+                uint sum = (uint)Network.Sum(s => { return (s.Online) ? s.Players.Count : 0; });
+                return sum;
             }
         }
 
@@ -40,7 +40,8 @@ namespace VellumZero
         {
             get
             {
-                return (uint)Network.Sum(s => { return (s.Online) ? s.PlayerSlots : 0; });
+                uint sum = (uint)Network.Sum(s => { return (s.Online) ? s.PlayerSlots : 0; });
+                return sum;
             }
         }
 
@@ -48,7 +49,8 @@ namespace VellumZero
         {
             get
             {
-                return (uint)Network.Sum(s => { return (s.Online) ? 1 : 0; });
+                uint sum = (uint)Network.Sum(s => { return (s.Online) ? 1 : 0; });
+                return sum;
             }
         }
 
@@ -91,11 +93,12 @@ namespace VellumZero
         /// Send a text message to all the other servers on the bus list
         /// </summary>
         /// <param name="text">the message to send</param>
-        public void Broadcast(string text)
+        public void Broadcast(string text, bool skipLocal = true)
         {            
-            foreach (string name in ssConfig.OtherServers)
+            foreach (Server s in Network)
             {
-                Announce(name, text);
+                if (skipLocal && s == _vz.ThisServer) continue;
+                Announce(s.WorldName, text);
             }
         }
 
@@ -106,7 +109,7 @@ namespace VellumZero
         /// <param name="text">the text to send</param>
         public void Announce(string destination, string text)
         {
-            text = CleanString(text);
+            text = Regex.Replace(text, @"§", "\u00a7");
             string address = "{0}map/{1}/announce";
             StringContent content = new StringContent(text);
 
@@ -196,21 +199,25 @@ namespace VellumZero
 
         internal bool RefreshBusServerInfo()
         {
-            List<string> players = new List<string>();
             bool updated = false;
 
             // get list of people from other servers
             foreach (Server s in Network)
             {
+                if (s == _vz.ThisServer) continue;
+
                 string result = ExecuteCommand(s.WorldName, "list");
                 if (result != "")
                 {
-                    // parse the player list
+                   // parse the player list
                     Regex r = new Regex("\"players\": \"([^\"]+?)\"");
                     Match m = r.Match(result);
                     if (m.Groups.Count > 1)
                         updated = (updated) ? updated : s.BusInfoUpdate(m.Groups[1].ToString());
-                } else
+                    if (!s.Online)
+                        s.MarkAsOnline();
+
+                } else if (s.Online)
                 {                    
                     s.MarkAsOffline();
                     updated = true;

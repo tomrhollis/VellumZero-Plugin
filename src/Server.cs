@@ -1,11 +1,12 @@
-﻿using Discord;
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.Data.SQLite;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Windows.Markup;
 using Vellum.Automation;
 
-namespace VellumZero.Models
+namespace VellumZero
 {
     public class Server
     {
@@ -28,9 +29,9 @@ namespace VellumZero.Models
             vz = v;
             WorldName = n;
             PlayerSlots = s;
-            if (o) MarkAsOnline();
-            else MarkAsOffline();
             Players = new List<Player>();
+            if (o) MarkAsOnline();
+            else Online = o;
         }
 
         public void MarkAsOnline()
@@ -42,36 +43,47 @@ namespace VellumZero.Models
             if (this == vz.ThisServer)
             {
                 if (vz.vzConfig.ServerStatusMessages) vz.Broadcast(String.Format(vz.vzConfig.VZStrings.ServerUpMsg, WorldName));
-                if (vz.Discord != null) vz.Discord.UpdateDiscordTopic().GetAwaiter().GetResult();
+                if (vz.Discord != null) vz.Discord.UpdateDiscordTopic();
                 if (vz.Bus != null && vz.vzConfig.ServerSync.ServerListScoreboard != "") vz.Bus.BroadcastCommand($"scoreboard players add \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 0");
             } 
             else if (vz.vzConfig.ServerSync.ServerListScoreboard != "")
-            {
                 vz.Execute($"scoreboard players add \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\" 0");
-            }
 }
 
         public void MarkAsOffline()
         {
             Online = false;
+            foreach(Player p in Players)
+            {
+                p?.Leave();
+            }
 
             // send updates
             if (this == vz.ThisServer)
             {
                 if (vz.vzConfig.ServerStatusMessages) vz.Broadcast(String.Format(vz.vzConfig.VZStrings.ServerDownMsg, WorldName));
-                if (vz.Discord != null) vz.Discord.UpdateDiscordTopic().GetAwaiter().GetResult();
+                if (vz.Discord != null) vz.Discord.UpdateDiscordTopic();
                 if (vz.Bus != null && vz.vzConfig.ServerSync.ServerListScoreboard != "") 
                     vz.Bus.BroadcastCommand($"scoreboard players reset \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\"");
             }
             else if (vz.vzConfig.ServerSync.ServerListScoreboard != "")
-            {
                 vz.Execute($"scoreboard players reset \"{WorldName}\" \"{vz.vzConfig.ServerSync.ServerListScoreboard}\"");
-            }
+        }
+
+        internal void AddPlayer(Player p)
+        {
+            Players.Add(p);
         }
 
         internal void RemovePlayer(ulong xuid)
         {
-            Players.Remove(Players.Find(p => { return p.Xuid == xuid; }));
+            Player gone = Players.FirstOrDefault(p => xuid == (p?.Xuid ?? ulong.MaxValue));
+            if (gone != null)
+            {
+                gone.Leave();
+                Players.Remove(gone);
+            }
+            else vz.Log("Error: could not remove record for player logging off with xuid " + xuid);
         }
 
 
@@ -133,32 +145,33 @@ namespace VellumZero.Models
 
         private bool UpdateInfo(string list, bool updated = false)
         {
-            List<string> names = list.Split(',').ToList();
+            List<string> names = (list != null && list.Trim() != "") ? list.Split(',').ToList() : new List<string>();
             List<string> currentList = new List<string>();
             List<Player> removeList = new List<Player>();
-
             Players.ForEach(p =>
             {
-                if (!names.Contains(p.Name))
+                if (!names.Contains(p?.Name))
                 {
                     removeList.Add(p);
                     updated = true;
                 }
-                else currentList.Add(p.Name);
+                else if (p != null) currentList.Add(p?.Name);
             });
             removeList.ForEach(p =>
             {
                 Players.Remove(p);
             });
-            names.ForEach(n =>
+            if(names.Count > 0)
             {
-                if (!currentList.Contains(n))
+                names.ForEach(n =>
                 {
-                    Players.Add(Player.CreateInstance(vz, this, n, 0));
-                    updated = true;
-                }
-            });
-
+                    if (!currentList.Contains(n))
+                    {
+                        Players.Add(Player.CreateInstance(vz, this, n, 0));
+                        updated = true;
+                    }
+                });
+            }
             return updated;
         }
     }

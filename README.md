@@ -56,8 +56,14 @@ If you want to try to get it working you're definitely welcome to try, and you c
 **Problem:** Strange characters appear in game or in Discord, especially when there should be color codes in the message.<br/>
 **Solution:** Windows terminals often don't use the modern standard of character encoding by default. To fix this, copy vellumzero.bat from the package zip file and use that to start the server.  It will switch the terminal to UTF-8 encoding and then run vellum as normal.  (Or add `chcp 65001` to the top of your server script if you already have one)
 
+**Problem:** It takes almost 5 minutes for my Discord channel's topic message to update.  What gives?
+**Solution:** This is unavoidable. A Discord developer informed the authors of the Java DiscordSRV plugin that changing the topic any more frequently than every 5 minutes puts too much strain on their systems and would be a bannable breach of their terms of service. So... it's slow so you don't get banned for using this.
+
 **Problem:** NullReferenceException crash on startup<br/>
 **Solution:** Something in configuration.json is probably not formatted properly.  Try backing it up, deleting it, and running vellum to generate a new configuration.json.  Copy your settings back in, being careful to use the same format as the defaults.
+
+**Problem:** Program doesn't start, it says something about a missing DLL file<br/>
+**Solution:** This is a problem in the dotnet framework where it doesn't clean up its temporary files sometimes and it gets confused.  Find the folder C:\Users\Your_username\AppData\Local\Temp\.net and delete the "vellum" folder inside of it.
 
 ## Sample Configuration
 ```
@@ -181,8 +187,6 @@ Text Settings - Don't worry about these unless you really want to change the wor
 -----------------------------------------------------------------------------------------------------
 Playing                   In Discord, the "game" the bot should be "Playing"
                           "" = Disables this feature
-                          If you have multiple servers with different settings here, all using
-                          the same bot, the last one to connect to Discord will win.
 
 ChannelTopicSolo          What to display as the topic text in Discord if this is the only server
                           "" = Disables this feature
@@ -194,6 +198,11 @@ ChannelTopicMulti         What to display as the topic text in Discord if Server
                           {0} # of users online on all servers
                           {1} # of servers online
                           {2} Total # of player slots on all servers
+
+ChannelTopicOffline       What to display as the topic text in Discord when the server goes down
+                          "" = Disables this feature
+                          NOTE: Discord only lets the topic update every 5 minutes. If the server
+                          goes down within 5 minutes of the last update, this setting won't be used
 
 ChatMsg                   The format of a chat message sent by a Minecraft player
                           {0} = The server's world name
