@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Data.SQLite;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Windows.Markup;
 using Vellum.Automation;
 
 namespace VellumZero
@@ -15,6 +13,13 @@ namespace VellumZero
         public DateTime BootTime { get; private set; }
         public bool Online { get; private set; }
         public uint PlayerSlots { get; private set; }
+        public TimeSpan UpTime 
+        { 
+            get
+            {
+                return DateTime.Now.Subtract(BootTime);
+            }
+        }
 
         private VellumZero vz;
 

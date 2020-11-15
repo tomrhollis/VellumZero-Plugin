@@ -42,8 +42,7 @@ If you want to try to get it working you're definitely welcome to try, and you c
 - Copy the sample configuration below into the Plugins section of vellum's configuration.json if it's not there already (or run vellum once or twice and it will generate the default settings for the plugin in configuration.json)
 - Read the descriptions of the settings below, and make any changes as needed
 - Set your Windows terminal defaults to *Disable QuickEdit Mode* (see the first issue in Common Issues below for detailed instructions)
-- Run vellum as normal, and the plugin will be loaded
-- If there are strange characters in the text the plugin sends to Minecraft, see the second issue below.
+- Run your server using vellumzero.bat to avoid some of the problems below
 
 ## Common Issues / Troubleshooting (Mostly Windows)
 **Problem:** The server will freeze randomly until I hit enter, then minutes or hours of stuff it hadn't been doing all happens at once<br/>
@@ -54,16 +53,16 @@ If you want to try to get it working you're definitely welcome to try, and you c
 - Close all terminal windows and start fresh
 
 **Problem:** Strange characters appear in game or in Discord, especially when there should be color codes in the message.<br/>
-**Solution:** Windows terminals often don't use the modern standard of character encoding by default. To fix this, copy vellumzero.bat from the package zip file and use that to start the server.  It will switch the terminal to UTF-8 encoding and then run vellum as normal.  (Or add `chcp 65001` to the top of your server script if you already have one)
+**Solution:** Windows terminals often don't use the modern standard of character encoding by default. To fix this, run your server with vellumzero.bat.  It will switch the terminal to UTF-8 encoding and then run vellum as normal.  (Or if you already have a server script, add the line `chcp 65001` right before vellum.exe)
 
 **Problem:** It takes almost 5 minutes for my Discord channel's topic message to update.  What gives?
-**Solution:** This is unavoidable. A Discord developer informed the authors of the Java DiscordSRV plugin that changing the topic any more frequently than every 5 minutes puts too much strain on their systems and would be a bannable breach of their terms of service. So... it's slow so you don't get banned for using this.
+**Solution:** This is unavoidable. A Discord developer informed the authors of the DiscordSRV plugin for Java that changing the topic any more often than every 5 minutes puts too much strain on their systems and would be a bannable offense. So... it's slow so you don't get rate limited (annoying) or banned (problematic).
 
 **Problem:** NullReferenceException crash on startup<br/>
-**Solution:** Something in configuration.json is probably not formatted properly.  Try backing it up, deleting it, and running vellum to generate a new configuration.json.  Copy your settings back in, being careful to use the same format as the defaults.
+**Solution:** This could be a lot of things, but usually it means something in configuration.json is not formatted properly.  Try backing it up, deleting it, and running vellum to generate a new configuration.json.  Copy your settings back in, being careful to use the same format as the defaults.
 
 **Problem:** Program doesn't start, it says something about a missing DLL file<br/>
-**Solution:** This is a problem in the dotnet framework where it doesn't clean up its temporary files sometimes and it gets confused.  Find the folder C:\Users\Your_username\AppData\Local\Temp\.net and delete the "vellum" folder inside of it.
+**Solution:** This is a problem in the dotnet framework where it doesn't clean up its temporary files sometimes and it gets confused.  Running with vellumzero.bat should take care of this problem now.  If it doesn't, that's a bug, please let me know.  Otherwise, find the folder C:\Users\Your_username\AppData\Local\Temp\.net and delete the "vellum" folder inside of it.
 
 ## Sample Configuration
 ```
@@ -92,8 +91,9 @@ If you want to try to get it working you're definitely welcome to try, and you c
         },
         "VZStrings": {
           "Playing": "Minecraft",
-          "ChannelTopicSolo": "{0}/{1} players online",
-          "ChannelTopicMulti": "{0} players online across {1} servers",
+          "ChannelTopic": "{0}/{1} players online. Uptime: {2}",
+          "ChannelTopicMulti": "{0}/{2} players online across {1} servers",
+          "ChannelTopicOffline": "Minecraft server offline",
           "ChatMsg": "(§6{0}§r) <{3}{1}{4}> {2}",
           "PlayerJoinMsg": "(§6{0}§r) {2}{1}{3} Connected",
           "PlayerLeaveMsg": "(§6{0}§r) {2}{1}{3} Left",
@@ -188,16 +188,12 @@ Text Settings - Don't worry about these unless you really want to change the wor
 Playing                   In Discord, the "game" the bot should be "Playing"
                           "" = Disables this feature
 
-ChannelTopicSolo          What to display as the topic text in Discord if this is the only server
+ChannelTopic              What to display as the topic text in Discord if this is the only server
                           "" = Disables this feature
                           {0} # of users online on this server
                           {1} # of possible users
-
-ChannelTopicMulti         What to display as the topic text in Discord if ServerSync is enabled
-                          "" = Disables this feature (uses ChannelTopicSolo instead)
-                          {0} # of users online on all servers
-                          {1} # of servers online
-                          {2} Total # of player slots on all servers
+                          {2} Uptime in days:hours:minutes (controller server only if more than 1)
+                          {3} Number of servers on the network (always 1 if no bus present)
 
 ChannelTopicOffline       What to display as the topic text in Discord when the server goes down
                           "" = Disables this feature

@@ -9,7 +9,6 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
 using Discord;
 using Discord.WebSocket;
 
@@ -27,6 +26,7 @@ namespace VellumZero
         private DateTime lastModify;
         private string currentTopic;
         private string nextTopic;
+        private bool connected = false;
         private Task msgSender = null;
         private System.Timers.Timer topicUpdater;
         private Queue<string> messageQueue;
@@ -48,11 +48,18 @@ namespace VellumZero
         {
             _client = new DiscordSocketClient();
             if (!(_vz.vzConfig.ServerSync.EnableServerSync && !_vz.vzConfig.ServerSync.DiscordController)) _client.MessageReceived += ReceiveMessage;
-
+            
             _client.Ready += async () =>
             {
+                connected = true;
                 Channel = (ITextChannel)_client.GetChannel(dsConfig.DiscordChannel);
                 _vz.Log(_vz.vzConfig.VZStrings.LogDiscConn);
+            };
+
+            _client.Disconnected += async (Exception ex) =>
+            {
+                connected = false;
+                _vz.Log(_vz.vzConfig.VZStrings.LogDiscDC);
             };
 
             await _client.LoginAsync(TokenType.Bot, dsConfig.DiscordToken);
@@ -63,12 +70,16 @@ namespace VellumZero
                 await _client.SetGameAsync(String.Format(_vz.vzConfig.VZStrings.Playing));
         }
 
+
         /// <summary>
         /// Shut down cleanly
         /// </summary>
         public async Task ShutDown()
         {
             UpdateDiscordTopic(_vz.vzConfig.VZStrings.ChannelTopicOffline);
+            msgSender.Dispose();
+            topicUpdater.Stop();
+            topicUpdater.Dispose();
             await _client.LogoutAsync();
             await _client.StopAsync();
             _vz.Log(_vz.vzConfig.VZStrings.LogDiscDC);
@@ -201,6 +212,8 @@ namespace VellumZero
                     while(messageQueue.Count > 0)
                     {
                         Thread.Sleep(1000);
+                        if (!connected) continue; // try again in a second if not connected
+
                         string msg = messageQueue.Dequeue();
                         try
                         {
@@ -224,16 +237,27 @@ namespace VellumZero
             // if there are multiple servers and this one isn't authorized to send status updates to discord, abort
             if (_vz.vzConfig.ServerSync.EnableServerSync && !_vz.vzConfig.ServerSync.DiscordController) return;
 
-            // otherwise if there are multiple servers and it is authorized, try to send using the multi-server string first
-            if (_vz.vzConfig.ServerSync.EnableServerSync && _vz.vzConfig.ServerSync.DiscordController && _vz.vzConfig.VZStrings.ChannelTopicMulti != "")
+            if (_vz.vzConfig.VZStrings.ChannelTopic != "" && topic == "")
             {
-                if (topic == "") topic = String.Format(_vz.vzConfig.VZStrings.ChannelTopicMulti, _vz.Bus.PlayerCount, _vz.Bus.OnlineServerCount);
-            }
+                // build the uptime string
+                string uptime = _vz.ThisServer.UpTime.Days + ":" + _vz.ThisServer.UpTime.Hours + ":" + _vz.ThisServer.UpTime.Minutes;
 
-            // as a last resort, check if we should send a single-server message instead
-            else if (_vz.vzConfig.VZStrings.ChannelTopic != "")
-            {
-                if (topic == "") topic = String.Format(_vz.vzConfig.VZStrings.ChannelTopic, _vz.ThisServer.Players.Count, _vz.ThisServer.PlayerSlots);
+                // find the player & server counts
+                uint servers, players, slots;
+                if (_vz.vzConfig.ServerSync.EnableServerSync && _vz.Bus != null)
+                {
+                    players = _vz.Bus.PlayerCount;
+                    slots = _vz.Bus.TotalSlots;
+                    servers = _vz.Bus.OnlineServerCount;
+                }
+                else
+                {
+                    players = (uint)_vz.ThisServer.Players.Count;
+                    slots = _vz.ThisServer.PlayerSlots;
+                    servers = 1;
+                }
+
+                topic = String.Format(_vz.vzConfig.VZStrings.ChannelTopic, players, slots, uptime, servers);
             }
 
             // if the situation doesn't fall into either of the categories above
@@ -257,6 +281,8 @@ namespace VellumZero
 
         private void TopicFunction(object sender, EventArgs e)
         {
+            if (!connected) return;
+
             try
             {
                 if (Channel == null) Channel = (ITextChannel)_client.GetChannel(dsConfig.DiscordChannel);

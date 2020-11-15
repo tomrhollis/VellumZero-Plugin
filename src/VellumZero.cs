@@ -95,7 +95,6 @@ namespace VellumZero
                     LogEnd = "Plugin Unloaded",
                     Playing = "Minecraft",
                     ChannelTopic = "{0}/{1} players online",
-                    ChannelTopicMulti = "{0} players online across {1} servers",
                     ChannelTopicOffline = " ",
                     ChatMsg = "(§6{0}§r) <{3}{1}{4}> {2}",
                     PlayerJoinMsg = "(§6{0}§r) {3}{1}{4} Connected",
@@ -482,7 +481,6 @@ namespace VellumZero
         public string LogEnd;
         public string Playing;
         public string ChannelTopic;
-        public string ChannelTopicMulti;
         public string ChannelTopicOffline;
         public string ChatMsg;
         public string PlayerJoinMsg;
