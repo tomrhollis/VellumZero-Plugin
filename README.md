@@ -1,4 +1,6 @@
 # VellumZero
+**Since ElementZero appears to have ceased development, this project has ended**
+
 A plugin for Vellum 1.3+ to take advantage of ElementZero capabilities.  What does that mean?
 
 [**Vellum**](https://github.com/clarkx86/vellum) is a **Minecraft: Bedrock Dedicated Server** (BDS) maintenance and automation tool by [**clarkx86**](https://github.com/clarkx86) and contributors, which can (among other things) create backups and render web-based maps of your Bedrock world using [**PapyrusCS**](https://github.com/mjungnickel18/papyruscs).
